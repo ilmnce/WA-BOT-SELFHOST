@@ -1,0 +1,1044 @@
+<!DOCTYPE html>
+<html lang="id" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ariel Engine — Pesona Kahuripan Business Suite</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons CDN (Figma Auto-Layout & Vector Importer Compatible) -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- QRCode.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <!-- FontAwesome 6 CDN (Fallback) -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
+            mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace']
+          },
+          colors: {
+            emerald: {
+              300: '#6ee7b7',
+              400: '#34d399',
+              500: '#10b981',
+              600: '#059669',
+              700: '#047857',
+              800: '#065f46',
+              900: '#064e3b',
+              950: '#022c22',
+            },
+            slate: {
+              100: '#f1f5f9',
+              200: '#e2e8f0',
+              300: '#cbd5e1',
+              400: '#94a3b8',
+              500: '#64748b',
+              600: '#475569',
+              700: '#334155',
+              800: '#1e293b',
+              900: '#0f172a',
+              950: '#020617',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Force Hardware-Accelerated Glass Refraction */
+    .glass-panel {
+      background-color: rgba(255, 255, 255, 0.04);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      transform: translate3d(0, 0, 0);
+      -webkit-transform: translate3d(0, 0, 0);
+      will-change: transform, backdrop-filter;
+    }
+
+    .glass-inner {
+      background-color: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      transform: translate3d(0, 0, 0);
+      -webkit-transform: translate3d(0, 0, 0);
+    }
+
+    .glass-bubble-in {
+      background-color: rgba(30, 41, 59, 0.65);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      transform: translate3d(0, 0, 0);
+      -webkit-transform: translate3d(0, 0, 0);
+    }
+
+    .glass-bubble-out {
+      background-color: rgba(5, 150, 105, 0.85);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(52, 211, 153, 0.35);
+      transform: translate3d(0, 0, 0);
+      -webkit-transform: translate3d(0, 0, 0);
+    }
+
+    #qrcode-container canvas {
+      display: none !important;
+    }
+    #qrcode-container img {
+      display: block !important;
+      margin: 0 auto !important;
+      max-width: 100% !important;
+      height: auto !important;
+      border-radius: 8px;
+    }
+
+    /* Apple Clean Scrollbars */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(52, 211, 153, 0.5);
+    }
+
+    /* ─── 1. LIVING MESH BACKGROUND DRIFT & BREATHING ANIMATIONS ─── */
+    @keyframes drift-orb-1 {
+      0%, 100% {
+        transform: translate3d(0, 0, 0) scale(1);
+      }
+      33% {
+        transform: translate3d(55px, -40px, 0) scale(1.12);
+      }
+      66% {
+        transform: translate3d(-35px, 30px, 0) scale(0.94);
+      }
+    }
+
+    @keyframes drift-orb-2 {
+      0%, 100% {
+        transform: translate3d(0, 0, 0) scale(1);
+      }
+      33% {
+        transform: translate3d(-45px, 35px, 0) scale(0.92);
+      }
+      66% {
+        transform: translate3d(40px, -25px, 0) scale(1.08);
+      }
+    }
+
+    @keyframes drift-orb-3 {
+      0%, 100% {
+        transform: translate3d(0, 0, 0) scale(1);
+      }
+      50% {
+        transform: translate3d(30px, -30px, 0) scale(1.06);
+      }
+    }
+
+    .living-orb-1 {
+      animation: drift-orb-1 18s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+      will-change: transform;
+    }
+    .living-orb-2 {
+      animation: drift-orb-2 22s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+      will-change: transform;
+    }
+    .living-orb-3 {
+      animation: drift-orb-3 20s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+      will-change: transform;
+    }
+
+    /* Pulse Glow Animation */
+    @keyframes pulse-glow {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.35; transform: scale(0.9); }
+    }
+    .pulse-glow {
+      animation: pulse-glow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+    }
+
+    /* ─── 2. STAGGERED DASHBOARD ENTRANCE ANIMATIONS ─── */
+    @keyframes stagger-entrance-slide {
+      0% {
+        opacity: 0;
+        transform: translateY(22px) scale(0.99);
+      }
+      100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    @keyframes stagger-entrance-scale {
+      0% {
+        opacity: 0;
+        transform: translateY(18px) scale(0.98);
+      }
+      100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .stagger-header {
+      animation: stagger-entrance-slide 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0ms forwards;
+    }
+    .stagger-card-1 {
+      animation: stagger-entrance-slide 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0ms forwards;
+    }
+    .stagger-card-2 {
+      animation: stagger-entrance-slide 0.6s cubic-bezier(0.16, 1, 0.3, 1) 100ms forwards;
+    }
+    .stagger-card-3 {
+      animation: stagger-entrance-slide 0.6s cubic-bezier(0.16, 1, 0.3, 1) 200ms forwards;
+    }
+    .stagger-monitor {
+      animation: stagger-entrance-scale 0.7s cubic-bezier(0.16, 1, 0.3, 1) 300ms forwards;
+    }
+
+    /* ─── 4. CHAT STREAM PHYSICS & SMOOTH GLIDING ─── */
+    #chat-stream {
+      scroll-behavior: smooth;
+    }
+
+    @keyframes chat-bubble-in {
+      0% {
+        opacity: 0;
+        transform: translateY(12px) scale(0.97);
+      }
+      100% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .chat-bubble-anim {
+      animation: chat-bubble-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      will-change: transform, opacity;
+    }
+
+    /* ─── 5. APPLE-STYLE TACTILE TOGGLE SPRING ANIMATION ─── */
+    .toggle-track-spring {
+      transition: background-color 0.3s ease-in-out, box-shadow 0.3s ease-in-out;
+    }
+    .toggle-thumb-spring {
+      transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+      will-change: transform;
+    }
+  </style>
+</head>
+
+<body class="bg-slate-950 text-slate-100 min-h-screen lg:h-screen lg:overflow-hidden font-sans antialiased selection:bg-emerald-500 selection:text-white relative">
+
+  <!-- ========================================================================= -->
+  <!-- LAYER 1: STRICT ABSOLUTE BOTTOM BASE BACKGROUND                           -->
+  <!-- ========================================================================= -->
+  <div class="fixed inset-0 bg-slate-950 -z-20" aria-hidden="true"></div>
+
+  <!-- ========================================================================= -->
+  <!-- LAYER 2: "LIVING" AMBIENT MESH LIGHT REFRACTION ORBS (Subtle Motion)     -->
+  <!-- ========================================================================= -->
+  <div class="fixed inset-0 -z-10 flex justify-center items-center overflow-hidden pointer-events-none" aria-hidden="true">
+    <!-- Emerald Living Glowing Refraction Orb Top-Left -->
+    <div class="absolute -top-[12%] -left-[10%] w-[650px] h-[650px] rounded-full bg-emerald-600/25 blur-[120px] transform-gpu living-orb-1"></div>
+    
+    <!-- Cyan Living Glowing Refraction Orb Center-Right -->
+    <div class="absolute top-[25%] -right-[10%] w-[600px] h-[600px] rounded-full bg-cyan-600/20 blur-[120px] transform-gpu living-orb-2"></div>
+    
+    <!-- Deep Emerald Living Glow Orb Bottom-Center -->
+    <div class="absolute -bottom-[15%] left-[20%] w-[750px] h-[750px] rounded-full bg-emerald-800/30 blur-[140px] transform-gpu living-orb-3"></div>
+  </div>
+
+  <!-- ========================================================================= -->
+  <!-- LAYER 3: THE MAIN APPLICATION UI LAYOUT (Strict Figma Auto-Layout Frames) -->
+  <!-- ========================================================================= -->
+  <div class="relative z-10 flex flex-col min-h-screen lg:h-screen lg:overflow-hidden">
+
+    <!-- 3.1. EXECUTIVE TOP NAVIGATION BAR -->
+    <header class="stagger-header sticky top-0 z-50 glass-panel shadow-2xl shadow-black/50 transition-all duration-300" style="backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);">
+      <div class="max-w-7xl mx-auto px-6 py-3.5 flex flex-row items-center justify-between gap-4">
+        
+        <!-- Left: Brand Logo & Executive Profile (Flexbox Auto-Layout) -->
+        <div class="flex flex-row items-center gap-4">
+          <div class="relative flex-shrink-0 group">
+            <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center shadow-lg shadow-emerald-500/25 border border-white/20 transition-all duration-300 ease-out group-hover:scale-105 group-hover:shadow-[0_0_20px_rgba(16,185,129,0.35)]">
+              <i class="fa-brands fa-whatsapp text-white text-2xl drop-shadow-sm"></i>
+            </div>
+            <span class="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-slate-900 rounded-full"></span>
+          </div>
+          
+          <div class="flex flex-col justify-center">
+            <div class="flex flex-row items-center gap-2.5">
+              <span class="text-white font-bold tracking-tight text-lg leading-tight">Pesona Kahuripan</span>
+              <span class="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm transition-all duration-300 hover:border-emerald-400/50">
+                <i data-lucide="zap" class="w-2.5 h-2.5"></i>
+                <span>AI Bot Pro</span>
+              </span>
+            </div>
+            <div class="flex flex-row items-center gap-1.5 mt-0.5 text-xs">
+              <span class="text-slate-400 font-medium">Marketing Executive:</span>
+              <span class="text-slate-100 font-semibold">Ariel P. U. Deta</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Executive Action Controls (Flexbox Auto-Layout) -->
+        <div class="flex flex-row items-center gap-3">
+          
+          <!-- Auto-Reply Master Toggle Button -->
+          <div class="flex flex-row items-center gap-3 glass-inner px-4 py-2 rounded-xl shadow-sm transition-all duration-300 hover:border-white/20" style="backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);">
+            <div class="flex flex-row items-center gap-1.5 text-xs font-semibold text-slate-300">
+              <i data-lucide="bot" class="w-3.5 h-3.5 text-slate-400"></i>
+              <span class="hidden sm:inline">Auto-Reply:</span>
+            </div>
+            
+            <button id="btn-toggle-bot" onclick="toggleBotState()" aria-label="Toggle Auto-Reply" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full p-0.5 border-2 border-transparent bg-emerald-500 toggle-track-spring transition-colors duration-300 ease-in-out focus:outline-none focus:ring-2 focus:ring-emerald-500/50 active:scale-95">
+              <span id="toggle-circle" class="pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-md transform-gpu toggle-thumb-spring transition-transform duration-300 ease-out will-change-transform translate-x-5"></span>
+            </button>
+            
+            <span id="toggle-label-text" class="text-xs font-bold text-emerald-400 min-w-[28px] transition-all duration-300 ease-in-out">ON</span>
+          </div>
+
+          <!-- Operational Hours Pill -->
+          <div class="hidden md:flex flex-row items-center gap-2 glass-inner px-4 py-2 rounded-xl text-xs text-slate-300 transition-all duration-300 hover:border-white/20" style="backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);">
+            <i data-lucide="clock" class="w-3.5 h-3.5 text-slate-400"></i>
+            <span class="font-medium text-slate-300">08:00 - 24:00 WIB</span>
+            <span id="hours-badge" class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+              Aktif
+            </span>
+          </div>
+
+          <!-- Live Connection Status Pill -->
+          <div class="flex flex-row items-center gap-2.5 glass-inner px-4 py-2 rounded-xl shadow-sm transition-all duration-300 hover:border-white/20" style="backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);">
+            <span id="nav-dot" class="w-2.5 h-2.5 rounded-full bg-emerald-400 pulse-glow"></span>
+            <span id="nav-status-text" class="text-xs font-semibold text-white">Menghubungkan...</span>
+          </div>
+
+        </div>
+      </div>
+    </header>
+
+    <!-- 3.2. WARNING BANNER JIKA BOT NONAKTIF -->
+    <div id="disabled-banner" class="hidden glass-panel border-b border-white/10 px-6 py-2.5 text-center text-xs font-semibold text-slate-300 z-40" style="backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);">
+      <div class="inline-flex flex-row items-center gap-2 px-4 py-1 rounded-full bg-white/5 border border-white/10">
+        <i data-lucide="pause-circle" class="w-3.5 h-3.5 text-slate-400"></i>
+        <span>Auto-Reply saat ini <strong>DINONAKTIFKAN</strong>. Bot tidak akan membalas pesan masuk.</span>
+      </div>
+    </div>
+
+    <!-- 3.3. MAIN DASHBOARD GRID (Strict 12-Column Grid Layout with Staggered Entrance) -->
+    <main class="max-w-7xl mx-auto px-6 py-6 flex-1 w-full grid grid-cols-1 lg:grid-cols-12 gap-6 min-h-0 lg:h-[calc(100vh-84px)] lg:max-h-[960px]">
+
+      <!-- LEFT COLUMN: SYSTEM & TELEMETRY (Col-span 5 / 35% Width) -->
+      <div class="lg:col-span-5 flex flex-col gap-6 min-h-0 overflow-y-auto pr-1 pb-2">
+
+        <!-- CARD 1: STATUS SISTEM & FILTER (Stagger Sequence 1 - 0ms Delay) -->
+        <div class="stagger-card-1 glass-panel shadow-2xl shadow-black/50 rounded-2xl p-6 flex flex-col gap-5 flex-shrink-0 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_20px_40px_rgba(0,0,0,0.6)]" style="backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);">
+          
+          <!-- Card Header (Auto-Layout Row) -->
+          <div class="flex flex-row items-center justify-between">
+            <div class="flex flex-row items-center gap-2">
+              <i data-lucide="server" class="w-4 h-4 text-emerald-400"></i>
+              <span class="text-xs font-bold uppercase tracking-wider text-slate-200">Status Sistem & Filter</span>
+            </div>
+            <span id="uptime-text" class="text-[11px] text-slate-400 font-mono glass-inner px-2.5 py-0.5 rounded-lg">
+              Port: 3000
+            </span>
+          </div>
+
+          <!-- Dynamic Status Hero Box -->
+          <div id="status-box" class="p-4 rounded-xl glass-inner flex flex-row items-center gap-4 transition-all duration-300" style="backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);">
+            <div id="status-icon-wrap" class="w-11 h-11 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center flex-shrink-0 text-slate-200 shadow-sm">
+              <i data-lucide="loader-2" class="w-5 h-5 animate-spin text-emerald-400"></i>
+            </div>
+            <div class="flex flex-col min-w-0">
+              <span id="status-title" class="text-sm font-bold text-white truncate">
+                Menginisialisasi WhatsApp
+              </span>
+              <span id="status-desc" class="text-xs text-slate-400 mt-0.5 truncate">
+                Memuat sesi & komponen browser...
+              </span>
+            </div>
+          </div>
+
+          <!-- Filter Rules Box -->
+          <div class="p-4 rounded-xl glass-inner flex flex-col gap-3 text-xs" style="backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);">
+            
+            <!-- Filter Kontak Row -->
+            <div class="flex flex-row items-center justify-between cursor-pointer group transition-all duration-200" onclick="toggleContactFilter()" title="Klik untuk mengubah filter kontak">
+              <div class="flex flex-row items-center gap-2 text-slate-400 font-medium">
+                <i data-lucide="user-plus" class="w-3.5 h-3.5 text-emerald-400"></i>
+                <span>Filter Kontak:</span>
+              </div>
+              <div id="contact-filter-badge" class="flex flex-row items-center gap-1.5 font-semibold text-emerald-300 bg-emerald-500/15 px-2.5 py-1 rounded-lg border border-emerald-500/30 text-[11px] group-hover:bg-emerald-500/25 transition-all">
+                <span>Hanya Nomor Baru</span>
+                <i data-lucide="refresh-cw" class="w-2.5 h-2.5 opacity-70"></i>
+              </div>
+            </div>
+
+            <!-- Jam Operasional Row -->
+            <div class="flex flex-row items-center justify-between pt-2.5 border-t border-white/5">
+              <div class="flex flex-row items-center gap-2 text-slate-400 font-medium">
+                <i data-lucide="clock" class="w-3.5 h-3.5 text-slate-400"></i>
+                <span>Jam Operasional:</span>
+              </div>
+              <span class="font-semibold text-white text-[11px]">08:00 - 24:00 WIB</span>
+            </div>
+
+            <!-- Status Kontak Mode Row -->
+            <div class="flex flex-row items-center justify-between pt-2.5 border-t border-white/5">
+              <div class="flex flex-row items-center gap-2 text-slate-400 font-medium">
+                <i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-400"></i>
+                <span>Status Kontak:</span>
+              </div>
+              <span id="contact-status-desc" class="font-semibold text-slate-300 text-[11px]">
+                Kontak Tersimpan Dilewati
+              </span>
+            </div>
+          </div>
+
+          <!-- Large Metric Counters -->
+          <div class="grid grid-cols-2 gap-4">
+            <div class="glass-inner rounded-xl p-4 flex flex-col items-center justify-center text-center transition-all duration-300 hover:border-emerald-500/40 hover:-translate-y-0.5 hover:shadow-[0_0_15px_rgba(16,185,129,0.15)]" style="backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);">
+              <div class="flex flex-row items-center justify-center gap-1.5 text-xs font-semibold text-slate-400">
+                <i data-lucide="inbox" class="w-3.5 h-3.5 text-emerald-400"></i>
+                <span>Pesan Masuk</span>
+              </div>
+              <span id="count-in" class="text-emerald-400 font-bold text-4xl mt-1 tracking-tight">0</span>
+            </div>
+            
+            <div class="glass-inner rounded-xl p-4 flex flex-col items-center justify-center text-center transition-all duration-300 hover:border-emerald-500/40 hover:-translate-y-0.5 hover:shadow-[0_0_15px_rgba(16,185,129,0.15)]" style="backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);">
+              <div class="flex flex-row items-center justify-center gap-1.5 text-xs font-semibold text-slate-400">
+                <i data-lucide="send" class="w-3.5 h-3.5 text-emerald-400"></i>
+                <span>Pesan Keluar</span>
+              </div>
+              <span id="count-out" class="text-emerald-400 font-bold text-4xl mt-1 tracking-tight">0</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- CARD 2: AUTENTIKASI WHATSAPP (Stagger Sequence 2 - 100ms Delay) -->
+        <div class="stagger-card-2 glass-panel shadow-2xl shadow-black/50 rounded-2xl flex flex-col flex-shrink-0 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_20px_40px_rgba(0,0,0,0.6)]" style="backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);">
+          
+          <div class="px-6 py-3.5 border-b border-white/10 bg-white/5 flex flex-row items-center justify-between flex-shrink-0">
+            <div class="flex flex-row items-center gap-2">
+              <i data-lucide="qr-code" class="w-4 h-4 text-emerald-400"></i>
+              <span class="text-xs font-bold uppercase tracking-wider text-slate-200">Autentikasi WhatsApp</span>
+            </div>
+            <span class="text-[11px] font-semibold text-slate-300 glass-inner px-2.5 py-0.5 rounded-md">
+              Multi-Device
+            </span>
+          </div>
+
+          <div class="p-5 flex flex-col items-center justify-center min-h-[220px]">
+            
+            <!-- Loader State -->
+            <div id="qr-loading" class="flex flex-col items-center gap-3 text-center py-4">
+              <div class="w-10 h-10 border-3 border-white/15 border-t-emerald-400 rounded-full animate-spin"></div>
+              <span class="text-xs font-medium text-slate-400">Memuat sesi WhatsApp...</span>
+            </div>
+
+            <!-- QR Code Canvas Display -->
+            <div id="qrcode-container" class="hidden p-3.5 bg-white rounded-2xl shadow-2xl transition-all duration-300"></div>
+
+            <!-- Connected State -->
+            <div id="qr-success" class="hidden flex-col items-center gap-3 text-center py-2">
+              <div class="w-14 h-14 rounded-2xl bg-emerald-500/15 border border-emerald-400/30 flex items-center justify-center text-emerald-400 shadow-lg shadow-emerald-500/20">
+                <i data-lucide="shield-check" class="w-7 h-7"></i>
+              </div>
+              <div class="flex flex-col items-center">
+                <span class="text-sm font-bold text-white">WhatsApp Terhubung</span>
+                <span id="connected-account" class="text-xs text-emerald-400 font-semibold mt-0.5">
+                  Sesi aktif & siap membalas otomatis
+                </span>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- CARD 3: MULTI-PROJECT KNOWLEDGE BASE (Stagger Sequence 3 - 200ms Delay) -->
+        <div class="stagger-card-3 glass-panel shadow-2xl shadow-black/50 rounded-2xl p-6 flex flex-col gap-4 flex-shrink-0 transition-all duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_20px_40px_rgba(0,0,0,0.6)]" style="backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);">
+          
+          <div class="flex flex-row items-center justify-between">
+            <div class="flex flex-row items-center gap-2">
+              <i data-lucide="layers" class="w-4 h-4 text-emerald-400"></i>
+              <span class="text-xs font-bold uppercase tracking-wider text-slate-200">Multi-Project Knowledge Base</span>
+            </div>
+            <span class="text-[10px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-md">
+              5 Kawasan
+            </span>
+          </div>
+
+          <!-- Standardized Auto-Layout Project Pills Grid with Liquid Hover Animations -->
+          <div class="grid grid-cols-5 gap-2.5 text-center" id="project-pills-container">
+            
+            <!-- PK14 -->
+            <button onclick="selectProject(this, 'PK14', 'Cileungsi')" id="pill-pk14" class="project-pill group h-14 flex flex-col justify-center items-center glass-inner hover:bg-white/10 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.15)] rounded-xl p-2 transition-all duration-300 ease-out hover:-translate-y-1 active:scale-95 focus:outline-none cursor-pointer">
+              <span class="block font-bold text-xs text-white group-hover:text-emerald-400 transition-colors">PK14</span>
+              <span class="text-[9px] text-slate-400 truncate block mt-0.5">Cileungsi</span>
+            </button>
+
+            <!-- PK15 -->
+            <button onclick="selectProject(this, 'PK15', 'Township')" id="pill-pk15" class="project-pill group h-14 flex flex-col justify-center items-center glass-inner hover:bg-white/10 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.15)] rounded-xl p-2 transition-all duration-300 ease-out hover:-translate-y-1 active:scale-95 focus:outline-none cursor-pointer">
+              <span class="block font-bold text-xs text-white group-hover:text-emerald-400 transition-colors">PK15</span>
+              <span class="text-[9px] text-slate-400 truncate block mt-0.5">Township</span>
+            </button>
+
+            <!-- PK16 -->
+            <button onclick="selectProject(this, 'PK16', 'Klpn-unggal')" id="pill-pk16" class="project-pill group h-14 flex flex-col justify-center items-center glass-inner hover:bg-white/10 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.15)] rounded-xl p-2 transition-all duration-300 ease-out hover:-translate-y-1 active:scale-95 focus:outline-none cursor-pointer">
+              <span class="block font-bold text-xs text-white group-hover:text-emerald-400 transition-colors">PK16</span>
+              <span class="text-[9px] text-slate-400 truncate block mt-0.5">Klpn-unggal</span>
+            </button>
+
+            <!-- PK17 (ACTIVE DEFAULT WITH EMERALD BORDER GLOW & LIQUID ELEVATION) -->
+            <button onclick="selectProject(this, 'PK17', 'Serang ⭐')" id="pill-pk17" class="project-pill active h-14 flex flex-col justify-center items-center bg-emerald-500/20 border border-emerald-400/80 hover:border-emerald-400 rounded-xl p-2 shadow-[0_0_20px_rgba(16,185,129,0.3)] ring-1 ring-emerald-400/40 transition-all duration-300 ease-out hover:-translate-y-1 active:scale-95 focus:outline-none cursor-pointer">
+              <span class="block font-extrabold text-xs text-emerald-300">PK17</span>
+              <span class="text-[9px] font-semibold text-emerald-300 truncate block mt-0.5">Serang ⭐</span>
+            </button>
+
+            <!-- PK18 -->
+            <button onclick="selectProject(this, 'PK18', 'Prg Panjang')" id="pill-pk18" class="project-pill group h-14 flex flex-col justify-center items-center glass-inner hover:bg-white/10 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.15)] rounded-xl p-2 transition-all duration-300 ease-out hover:-translate-y-1 active:scale-95 focus:outline-none cursor-pointer">
+              <span class="block font-bold text-xs text-white group-hover:text-emerald-400 transition-colors">PK18</span>
+              <span class="text-[9px] text-slate-400 truncate block mt-0.5">Prg Panjang</span>
+            </button>
+
+          </div>
+
+          <!-- Active Project Banner -->
+          <div id="project-detail-banner" class="px-3.5 py-2 rounded-xl glass-inner flex flex-row items-center justify-between text-[11px] text-slate-400">
+            <span id="active-project-name" class="font-semibold text-slate-200">
+              Kawasan Aktif: <strong class="text-emerald-400">Pesona Kahuripan 17 (Serang)</strong>
+            </span>
+            <span class="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">Ready AI RAG</span>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- RIGHT COLUMN: LIVE CHAT AUTOMATION MONITOR (Stagger Sequence 4 - 300ms Scale In) -->
+      <div class="lg:col-span-7 flex flex-col h-full min-h-0">
+        
+        <div class="stagger-monitor glass-panel shadow-2xl shadow-black/50 rounded-2xl flex flex-col h-full min-h-0 overflow-hidden transition-all duration-300 hover:shadow-[0_20px_40px_rgba(0,0,0,0.6)]" style="backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);">
+
+          <!-- Monitor Header (Flex Row) -->
+          <div class="px-6 py-4 border-b border-white/10 bg-white/5 flex flex-row items-center justify-between flex-shrink-0 rounded-t-2xl">
+            <div class="flex flex-row items-center gap-3.5">
+              <div class="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-400/30 flex items-center justify-center text-emerald-400 flex-shrink-0 shadow-sm transition-all duration-300 hover:scale-105 hover:shadow-[0_0_15px_rgba(16,185,129,0.25)]">
+                <i data-lucide="message-square" class="w-5 h-5"></i>
+              </div>
+              <div class="flex flex-col">
+                <span class="text-sm font-bold text-white tracking-tight">
+                  Live Chat Automation Monitor
+                </span>
+                <span class="text-[11px] text-slate-400 font-medium">
+                  Auto-scroll real-time activity stream
+                </span>
+              </div>
+            </div>
+
+            <!-- Clear Log Button -->
+            <button onclick="clearChatLog()" class="text-xs font-semibold text-slate-300 hover:text-white px-3.5 py-2 rounded-xl glass-inner hover:bg-white/10 hover:border-white/20 transition-all duration-300 flex flex-row items-center gap-2 flex-shrink-0 active:scale-95 shadow-sm cursor-pointer">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5 text-slate-400"></i>
+              <span>Bersihkan Log</span>
+            </button>
+          </div>
+
+          <!-- Chat Stream Scroll Container (Auto-Layout Column with Smooth Gliding Physics) -->
+          <div id="chat-stream" class="flex-1 min-h-0 overflow-y-auto p-6 flex flex-col gap-4 font-sans bg-slate-950/20" style="scroll-behavior: smooth;">
+            
+            <div id="empty-state-notice" class="flex justify-center my-auto py-12 text-center">
+              <div class="flex flex-col items-center gap-3 glass-inner px-6 py-4 rounded-2xl max-w-sm border border-white/10 shadow-sm">
+                <div class="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-400/25 flex items-center justify-center text-emerald-400">
+                  <i data-lucide="message-square-dashed" class="w-5 h-5"></i>
+                </div>
+                <div class="flex flex-col gap-1">
+                  <span class="text-xs font-bold text-white">Menunggu Pesan Masuk</span>
+                  <span class="text-[11px] text-slate-400 leading-relaxed">
+                    Aktivitas chat prospek dan balasan otomatis AI akan muncul secara live di sini.
+                  </span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Monitor Footer & Real-Time Sync Status (Flex Row) -->
+          <div class="px-6 py-3.5 border-t border-white/10 bg-white/5 rounded-b-2xl flex flex-row items-center justify-between text-[11px] text-slate-400 font-mono flex-shrink-0">
+            <div class="flex flex-row items-center gap-2">
+              <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-glow"></span>
+              <span class="font-medium text-slate-300">Socket.io Connected</span>
+            </div>
+            <span id="last-ping" class="text-slate-400">Live Active</span>
+          </div>
+
+        </div>
+
+      </div>
+
+    </main>
+
+  </div>
+  <!-- SOCKET.IO CLIENT SCRIPT & UI LOGIC -->
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    // Initialize Lucide Icons
+    function refreshIcons() {
+      if (window.lucide) {
+        lucide.createIcons();
+      }
+    }
+    document.addEventListener('DOMContentLoaded', refreshIcons);
+
+    // ─── Interactive Multi-Project Selector ────────────────────────────────────
+    const projectNames = {
+      'PK14': 'Pesona Kahuripan 14 (Cileungsi)',
+      'PK15': 'Pesona Kahuripan 15 (Township)',
+      'PK16': 'Pesona Kahuripan 16 (Klapanunggal)',
+      'PK17': 'Pesona Kahuripan 17 (Serang) ⭐',
+      'PK18': 'Pesona Kahuripan 18 (Parung Panjang)'
+    };
+
+    function selectProject(el, code, label) {
+      document.querySelectorAll('.project-pill').forEach(pill => {
+        pill.className = 'project-pill group h-14 flex flex-col justify-center items-center glass-inner hover:bg-white/10 hover:border-emerald-500/50 hover:shadow-[0_0_15px_rgba(16,185,129,0.15)] rounded-xl p-2 transition-all duration-300 ease-out hover:-translate-y-1 active:scale-95 focus:outline-none cursor-pointer';
+        const spanTitle = pill.querySelector('span:first-child');
+        const spanSub = pill.querySelector('span:last-child');
+        if (spanTitle) spanTitle.className = 'block font-bold text-xs text-white group-hover:text-emerald-400 transition-colors';
+        if (spanSub) spanSub.className = 'text-[9px] text-slate-400 truncate block mt-0.5';
+      });
+
+      const target = el || document.getElementById('pill-' + code.toLowerCase());
+      if (target) {
+        target.className = 'project-pill active h-14 flex flex-col justify-center items-center bg-emerald-500/20 border border-emerald-400/80 hover:border-emerald-400 rounded-xl p-2 shadow-[0_0_20px_rgba(16,185,129,0.3)] ring-1 ring-emerald-400/40 transition-all duration-300 ease-out hover:-translate-y-1 active:scale-95 focus:outline-none cursor-pointer';
+        const activeTitle = target.querySelector('span:first-child');
+        const activeSub = target.querySelector('span:last-child');
+        if (activeTitle) activeTitle.className = 'block font-extrabold text-xs text-emerald-300';
+        if (activeSub) activeSub.className = 'text-[9px] font-semibold text-emerald-300 truncate block mt-0.5';
+      }
+
+      const bannerText = document.getElementById('active-project-name');
+      if (bannerText) {
+        bannerText.innerHTML = `Kawasan Aktif: <strong class="text-emerald-400">${projectNames[code] || code}</strong>`;
+      }
+    }
+
+    // ─── Socket & State Management ───────────────────────────────────────────
+    const socket = io();
+    let countIn = 0;
+    let countOut = 0;
+    let qrInstance = null;
+    let isBotEnabled = true;
+    let onlyNewContacts = true;
+
+    function formatTime(isoStr) {
+      const d = isoStr ? new Date(isoStr) : new Date();
+      return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+
+    function cleanPhone(raw) {
+      if (!raw) return 'Unknown';
+      let formatted = raw.replace(/@(c\.us|lid|s\.whatsapp\.net)$/, '');
+      if (formatted.startsWith('62')) {
+        formatted = '0' + formatted.slice(2);
+      }
+      if (/^08\d{8,11}$/.test(formatted)) {
+        formatted = formatted.replace(/(\d{4})(\d{4})(\d+)/, '$1-$2-$3');
+      }
+      return formatted;
+    }
+
+    function escapeHTML(str) {
+      if (!str) return '';
+      return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    // Update Status Hero Banner
+    function updateStatus(type, title, desc) {
+      const box = document.getElementById('status-box');
+      const iconWrap = document.getElementById('status-icon-wrap');
+      const titleEl = document.getElementById('status-title');
+      const descEl = document.getElementById('status-desc');
+      const navDot = document.getElementById('nav-dot');
+      const navText = document.getElementById('nav-status-text');
+
+      if (!box || !iconWrap || !titleEl || !descEl) return;
+
+      if (type === 'ready') {
+        box.className = 'p-4 rounded-xl border border-emerald-500/40 bg-emerald-500/15 glass-inner flex flex-row items-center gap-4 transition-all duration-300';
+        iconWrap.className = 'w-11 h-11 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center flex-shrink-0 text-emerald-400 shadow-sm';
+        iconWrap.innerHTML = '<i data-lucide="check" class="w-5 h-5 text-emerald-400"></i>';
+        titleEl.className = 'text-sm font-bold text-emerald-200 truncate';
+        descEl.className = 'text-xs text-emerald-300 mt-0.5 truncate';
+        if (navDot) navDot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400 pulse-glow';
+        if (navText) navText.textContent = isBotEnabled ? 'Bot Aktif' : 'Bot Nonaktif';
+      } else if (type === 'qr') {
+        box.className = 'p-4 rounded-xl glass-inner flex flex-row items-center gap-4 transition-all duration-300';
+        iconWrap.className = 'w-11 h-11 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center flex-shrink-0 text-slate-200 shadow-sm';
+        iconWrap.innerHTML = '<i data-lucide="qr-code" class="w-5 h-5 text-emerald-400"></i>';
+        titleEl.className = 'text-sm font-bold text-white truncate';
+        descEl.className = 'text-xs text-slate-400 mt-0.5 truncate';
+        if (navDot) navDot.className = 'w-2.5 h-2.5 rounded-full bg-amber-400 pulse-glow';
+        if (navText) navText.textContent = 'Scan QR';
+      } else if (type === 'auth') {
+        box.className = 'p-4 rounded-xl glass-inner flex flex-row items-center gap-4 transition-all duration-300';
+        iconWrap.className = 'w-11 h-11 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center flex-shrink-0 text-slate-200 shadow-sm';
+        iconWrap.innerHTML = '<i data-lucide="key" class="w-5 h-5 text-emerald-400"></i>';
+        titleEl.className = 'text-sm font-bold text-white truncate';
+        descEl.className = 'text-xs text-slate-400 mt-0.5 truncate';
+        if (navDot) navDot.className = 'w-2.5 h-2.5 rounded-full bg-cyan-400 pulse-glow';
+        if (navText) navText.textContent = 'Autentikasi';
+      } else if (type === 'disconnected') {
+        box.className = 'p-4 rounded-xl border border-rose-500/30 bg-rose-500/10 glass-inner flex flex-row items-center gap-4 transition-all duration-300';
+        iconWrap.className = 'w-11 h-11 rounded-xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center flex-shrink-0 text-rose-400 shadow-sm';
+        iconWrap.innerHTML = '<i data-lucide="wifi-off" class="w-5 h-5 text-rose-400"></i>';
+        titleEl.className = 'text-sm font-bold text-rose-200 truncate';
+        descEl.className = 'text-xs text-rose-300 mt-0.5 truncate';
+        if (navDot) navDot.className = 'w-2.5 h-2.5 rounded-full bg-rose-500';
+        if (navText) navText.textContent = 'Terputus';
+      }
+
+      titleEl.textContent = title;
+      descEl.textContent = desc;
+      refreshIcons();
+    }
+
+    function renderBotToggle(enabled) {
+      isBotEnabled = enabled;
+      const btn = document.getElementById('btn-toggle-bot');
+      const circle = document.getElementById('toggle-circle');
+      const label = document.getElementById('toggle-label-text');
+      const banner = document.getElementById('disabled-banner');
+      const navText = document.getElementById('nav-status-text');
+
+      if (!btn || !circle || !label) return;
+
+      if (enabled) {
+        btn.classList.remove('bg-slate-700');
+        btn.classList.add('bg-emerald-500');
+        circle.classList.remove('translate-x-0');
+        circle.classList.add('translate-x-5');
+        label.textContent = 'ON';
+        label.classList.remove('text-slate-400');
+        label.classList.add('text-emerald-400');
+        if (banner) banner.classList.add('hidden');
+        if (navText && (navText.textContent.includes('Bot') || navText.textContent === 'Menghubungkan...')) {
+          navText.textContent = 'Bot Aktif';
+        }
+      } else {
+        btn.classList.remove('bg-emerald-500');
+        btn.classList.add('bg-slate-700');
+        circle.classList.remove('translate-x-5');
+        circle.classList.add('translate-x-0');
+        label.textContent = 'OFF';
+        label.classList.remove('text-emerald-400');
+        label.classList.add('text-slate-400');
+        if (banner) banner.classList.remove('hidden');
+        if (navText && navText.textContent.includes('Bot')) {
+          navText.textContent = 'Bot Nonaktif';
+        }
+      }
+    }
+
+    function toggleBotState() {
+      const nextState = !isBotEnabled;
+      renderBotToggle(nextState);
+      socket.emit('toggle_bot', { enabled: nextState });
+    }
+
+    function toggleContactFilter() {
+      onlyNewContacts = !onlyNewContacts;
+      socket.emit('toggle_contact_filter', { onlyNew: onlyNewContacts });
+    }
+
+    function clearChatLog() {
+      socket.emit('clear_chat_logs');
+      const container = document.getElementById('chat-stream');
+      if (container) {
+        container.innerHTML = `
+          <div id="empty-state-notice" class="flex justify-center my-auto py-12 text-center">
+            <div class="flex flex-col items-center gap-3 glass-inner px-6 py-4 rounded-2xl max-w-sm border border-white/10 shadow-sm">
+              <div class="w-10 h-10 rounded-xl bg-emerald-500/15 border border-emerald-400/25 flex items-center justify-center text-emerald-400">
+                <i data-lucide="trash-2" class="w-5 h-5"></i>
+              </div>
+              <div class="flex flex-col gap-1">
+                <span class="text-xs font-bold text-white">Log Dibersihkan</span>
+                <span class="text-[11px] text-slate-400 leading-relaxed">
+                  Log obrolan dibersihkan pada ${formatTime()}
+                </span>
+              </div>
+            </div>
+          </div>`;
+      }
+      refreshIcons();
+    }
+
+    function renderIncomingMessage(data) {
+      const container = document.getElementById('chat-stream');
+      if (!container) return;
+
+      const emptyNotice = document.getElementById('empty-state-notice');
+      if (emptyNotice) emptyNotice.remove();
+
+      const phone = cleanPhone(data.sender);
+      const time = formatTime(data.timestamp);
+      const isSaved = Boolean(data.isSavedContact !== undefined ? data.isSavedContact : data.isSaved);
+
+      let contactBadge = `<span class="text-[10px] font-bold bg-emerald-500/15 text-emerald-300 px-2 py-0.5 rounded-lg border border-emerald-500/30">Nomor Baru</span>`;
+      if (isSaved) {
+        contactBadge = `<span class="text-[10px] font-semibold bg-white/10 text-slate-300 px-2 py-0.5 rounded-lg border border-white/15">Kontak Tersimpan</span>`;
+      }
+
+      const wrapper = document.createElement('div');
+      wrapper.className = 'chat-bubble-anim flex flex-row items-start gap-3.5 max-w-[88%] sm:max-w-[82%]';
+      wrapper.innerHTML = `
+        <div class="w-9 h-9 rounded-2xl glass-inner text-slate-300 flex items-center justify-center font-bold text-xs flex-shrink-0 mt-0.5 shadow-sm">
+          ${escapeHTML(phone.slice(-2))}
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <div class="flex flex-row items-center gap-2.5 flex-wrap">
+            <span class="text-xs font-bold text-white">${escapeHTML(data.contactName || phone)}</span>
+            <span class="text-[10px] text-slate-400 font-mono">${time}</span>
+            ${contactBadge}
+          </div>
+          <div class="glass-bubble-in text-slate-100 rounded-2xl rounded-tl-sm p-4 shadow-lg text-sm leading-relaxed" style="backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);">
+            ${escapeHTML(data.body)}
+          </div>
+        </div>
+      `;
+      container.appendChild(wrapper);
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+
+      const lastPing = document.getElementById('last-ping');
+      if (lastPing) lastPing.textContent = 'Update: ' + formatTime();
+      refreshIcons();
+    }
+
+    function renderOutgoingMessage(data) {
+      const container = document.getElementById('chat-stream');
+      if (!container) return;
+
+      const emptyNotice = document.getElementById('empty-state-notice');
+      if (emptyNotice) emptyNotice.remove();
+
+      const time = formatTime(data.timestamp);
+      const triggers = Array.isArray(data.triggers) && data.triggers.length > 0
+        ? data.triggers
+        : (data.trigger && data.trigger !== 'NONE' ? [data.trigger] : []);
+
+      let triggerBadges = '';
+      if (triggers.length > 0) {
+        triggerBadges = triggers.map(t => `
+          <span class="inline-flex flex-row items-center gap-1 text-[9px] font-mono font-bold glass-inner text-emerald-300 px-2 py-0.5 rounded-lg shadow-sm">
+            <i data-lucide="crosshair" class="w-2.5 h-2.5 text-emerald-400"></i>
+            <span>${escapeHTML(t)}</span>
+          </span>
+        `).join('');
+      }
+
+      const wrapper = document.createElement('div');
+      wrapper.className = 'chat-bubble-anim flex flex-row items-start gap-3.5 justify-end max-w-[88%] sm:max-w-[82%] ml-auto';
+      wrapper.innerHTML = `
+        <div class="flex flex-col gap-1.5 text-right items-end">
+          <div class="flex flex-row items-center justify-end gap-2.5 flex-wrap">
+            ${triggerBadges}
+            <span class="text-[10px] text-slate-400 font-mono">${time}</span>
+            <span class="text-xs font-bold text-emerald-400">Ariel Engine</span>
+          </div>
+          <div class="glass-bubble-out text-white rounded-2xl rounded-tr-sm p-4 shadow-lg text-sm leading-relaxed text-left" style="backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);">
+            ${escapeHTML(data.body)}
+          </div>
+        </div>
+        <div class="w-9 h-9 rounded-2xl bg-emerald-500/20 border border-emerald-400/30 flex items-center justify-center text-emerald-300 font-bold text-xs flex-shrink-0 mt-0.5 shadow-lg shadow-emerald-500/20">
+          <i data-lucide="cpu" class="w-4 h-4"></i>
+        </div>
+      `;
+      container.appendChild(wrapper);
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+
+      const lastPing = document.getElementById('last-ping');
+      if (lastPing) lastPing.textContent = 'Update: ' + formatTime();
+      refreshIcons();
+    }
+
+    // ─── Socket Event Listeners ───────────────────────────────────────────────
+    socket.on('connect', () => {
+      console.log('[SOCKET] Connected to Ariel Bot Server.');
+      const navDot = document.getElementById('nav-dot');
+      const navText = document.getElementById('nav-status-text');
+      if (navDot) navDot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400 pulse-glow';
+      if (navText) navText.textContent = isBotEnabled ? 'Bot Aktif' : 'Bot Nonaktif';
+    });
+
+    socket.on('disconnect', () => {
+      console.warn('[SOCKET] Disconnected from server.');
+      updateStatus('disconnected', 'Terputus dari Server', 'Mencoba menghubungkan kembali...');
+    });
+
+    socket.on('operational_status', (data) => {
+      renderBotToggle(data.isBotActive);
+
+      if (data.countIn !== undefined) {
+        countIn = data.countIn;
+        const elIn = document.getElementById('count-in');
+        if (elIn) elIn.textContent = countIn;
+      }
+      if (data.countOut !== undefined) {
+        countOut = data.countOut;
+        const elOut = document.getElementById('count-out');
+        if (elOut) elOut.textContent = countOut;
+      }
+
+      onlyNewContacts = Boolean(data.filterOnlyNewContacts !== undefined ? data.filterOnlyNewContacts : data.filterSavedContact);
+      const filterBadge = document.getElementById('contact-filter-badge');
+      const statusDesc = document.getElementById('contact-status-desc');
+
+      if (filterBadge && statusDesc) {
+        if (onlyNewContacts) {
+          filterBadge.innerHTML = '<span>Hanya Nomor Baru</span> <i data-lucide="refresh-cw" class="w-2.5 h-2.5 opacity-70"></i>';
+          filterBadge.className = 'flex flex-row items-center gap-1.5 font-semibold text-emerald-300 bg-emerald-500/15 px-2.5 py-1 rounded-lg border border-emerald-500/30 text-[11px] group-hover:bg-emerald-500/25 transition-all';
+          statusDesc.textContent = 'Kontak Tersimpan Dilewati';
+          statusDesc.className = 'font-semibold text-slate-300 text-[11px]';
+        } else {
+          filterBadge.innerHTML = '<span>Semua Nomor</span> <i data-lucide="refresh-cw" class="w-2.5 h-2.5 opacity-70"></i>';
+          filterBadge.className = 'flex flex-row items-center gap-1.5 font-semibold text-slate-200 bg-white/10 px-2.5 py-1 rounded-lg border border-white/15 text-[11px] group-hover:bg-white/20 transition-all';
+          statusDesc.textContent = 'Semua Chat Dibalas';
+          statusDesc.className = 'font-semibold text-emerald-400 text-[11px]';
+        }
+      }
+
+      const hoursBadge = document.getElementById('hours-badge');
+      if (hoursBadge) {
+        if (data.inHours) {
+          hoursBadge.textContent = 'Aktif';
+          hoursBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30';
+        } else {
+          hoursBadge.textContent = 'Istirahat';
+          hoursBadge.className = 'text-[10px] font-bold px-2 py-0.5 rounded-lg bg-white/10 text-slate-400 border border-white/15';
+        }
+      }
+      refreshIcons();
+    });
+
+    socket.on('stats_update', (data) => {
+      if (data.countIn !== undefined) {
+        countIn = data.countIn;
+        const elIn = document.getElementById('count-in');
+        if (elIn) elIn.textContent = countIn;
+      }
+      if (data.countOut !== undefined) {
+        countOut = data.countOut;
+        const elOut = document.getElementById('count-out');
+        if (elOut) elOut.textContent = countOut;
+      }
+    });
+
+    socket.on('recent_logs', (logs) => {
+      if (Array.isArray(logs) && logs.length > 0) {
+        const container = document.getElementById('chat-stream');
+        if (container) {
+          container.innerHTML = '';
+          logs.forEach(item => {
+            if (item.type === 'in') renderIncomingMessage(item.data);
+            else if (item.type === 'out') renderOutgoingMessage(item.data);
+          });
+        }
+      }
+    });
+
+    socket.on('qr', (rawQr) => {
+      if (!rawQr) return;
+      updateStatus('qr', 'Menunggu Scan QR', 'Silakan scan dengan aplikasi WhatsApp');
+
+      const loader = document.getElementById('qr-loading');
+      const success = document.getElementById('qr-success');
+      const qrBox = document.getElementById('qrcode-container');
+
+      if (loader) loader.classList.add('hidden');
+      if (success) {
+        success.classList.add('hidden');
+        success.classList.remove('flex');
+      }
+
+      if (qrBox) {
+        qrBox.classList.remove('hidden');
+        qrBox.innerHTML = '';
+
+        qrInstance = new QRCode(qrBox, {
+          text: rawQr,
+          width: 160,
+          height: 160,
+          colorDark: '#020617',
+          colorLight: '#ffffff',
+          correctLevel: QRCode.CorrectLevel.M
+        });
+      }
+    });
+
+    socket.on('status', (data) => {
+      if (data.state === 'authenticated') {
+        updateStatus('auth', 'Sesi Terautentikasi', 'Memuat obrolan & kontak...');
+      } else if (data.state === 'initializing') {
+        updateStatus('auth', 'Menginisialisasi WhatsApp', data.text || 'Memuat sesi & browser...');
+      }
+    });
+
+    socket.on('ready', (data) => {
+      updateStatus('ready', 'Bot Aktif & Siap', `Terhubung sebagai ${data.user || 'Ariel'} (${data.phone || ''})`);
+
+      document.getElementById('qr-loading').classList.add('hidden');
+      document.getElementById('qrcode-container').classList.add('hidden');
+      const successBox = document.getElementById('qr-success');
+      successBox.classList.remove('hidden');
+      successBox.classList.add('flex');
+      document.getElementById('connected-account').textContent = `${data.user || 'Ariel'} · +${data.phone || ''}`;
+      refreshIcons();
+    });
+
+    socket.on('message_in', (data) => {
+      renderIncomingMessage(data);
+    });
+
+    socket.on('message_out', (data) => {
+      renderOutgoingMessage(data);
+    });
+
+    socket.on('chat_logs_cleared', () => {
+      const container = document.getElementById('chat-stream');
+      if (container) {
+        container.innerHTML = `
+          <div id="empty-state-notice" class="flex justify-center my-4 chat-bubble-anim">
+            <span class="text-xs font-medium glass-inner text-slate-400 px-4 py-2 rounded-full shadow-sm flex flex-row items-center gap-2">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5 text-emerald-400"></i>
+              <span>Log dibersihkan pada ${formatTime()}</span>
+            </span>
+          </div>`;
+      }
+      refreshIcons();
+    });
+  </script>
+</body>
+</html>

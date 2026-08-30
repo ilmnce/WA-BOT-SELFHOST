@@ -7,9 +7,17 @@ const { Server } = require('socket.io');
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const fs   = require('fs');
 const path = require('path');
+const crypto = require('crypto');
+const { loadConfig, isWithinOperatingHours } = require('./src/config');
+const { createDashboardAuth, isAuthorized } = require('./src/dashboard-auth');
+
+const config = loadConfig();
 
 // ─── Guard: Unhandled errors ─────────────────────────────────────────────────
-process.on('uncaughtException',  err => console.warn('[GUARD] uncaughtException:', err.message));
+process.on('uncaughtException', err => {
+  console.error('[FATAL] uncaughtException:', err);
+  process.exit(1);
+});
 process.on('unhandledRejection', err => console.warn('[GUARD] unhandledRejection:', err?.message || err));
 
 // Patch LocalAuth logout agar tidak crash di Windows (EBUSY)
@@ -24,10 +32,31 @@ try {
 // ─── Server setup ─────────────────────────────────────────────────────────────
 const app    = express();
 const server = http.createServer(app);
-const io     = new Server(server, { cors: { origin: '*' } });
-const PORT   = process.env.PORT || 3000;
+const io     = new Server(server);
+const PORT   = config.port;
 
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.set({
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'no-referrer'
+  });
+  next();
+});
+app.get('/health', (_req, res) => res.json({
+  ok: true,
+  whatsapp: currentBotStatus,
+  botActive: isBotActive,
+  operatingHours: isOperatingHours()
+}));
+app.use(createDashboardAuth(config.dashboardToken));
 app.use(express.static(path.join(__dirname, 'public')));
+
+io.use((socket, next) => {
+  if (isAuthorized(socket.handshake.headers, config.dashboardToken)) return next();
+  return next(new Error('Akses dashboard ditolak.'));
+});
 
 const MEDIA_DIR = path.join(__dirname, 'media');
 if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR, { recursive: true });
@@ -39,15 +68,14 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 let currentQr          = null;
 let currentBotStatus   = 'initializing';
 let botAccountInfo     = null;
-let isBotActive        = true;
-let filterSavedContact = true;   // true = HANYA balas nomor baru/tidak tersimpan (kontak tersimpan dilewati)
+let isBotActive        = config.botActiveAtStartup;
+let filterSavedContact = config.filterSavedContacts;   // true = HANYA balas nomor baru/tidak tersimpan (kontak tersimpan dilewati)
 let countIn            = 0;
 let countOut           = 0;
 const recentLogs       = [];     // max 60 pesan terakhir untuk live monitor rehydration
 
 function isOperatingHours() {
-  const h = new Date().getHours();
-  return h >= 8 && h < 24;
+  return isWithinOperatingHours(new Date(), config);
 }
 function getOpStatus() {
   return {
@@ -55,6 +83,9 @@ function getOpStatus() {
     isBotActive,
     filterSavedContact,
     filterOnlyNewContacts: filterSavedContact,
+    operatingTimeZone: config.operatingTimeZone,
+    operatingStartHour: config.operatingStartHour,
+    operatingEndHour: config.operatingEndHour,
     countIn,
     countOut
   };
@@ -62,6 +93,10 @@ function getOpStatus() {
 
 // ─── Gemini Key Manager ───────────────────────────────────────────────────────
 const KEY_CACHE = path.join(DATA_DIR, 'key_status.json');
+
+function keyFingerprint(key) {
+  return crypto.createHash('sha256').update(key).digest('hex').slice(0, 20);
+}
 
 function loadRawKeys() {
   const set = new Set();
@@ -92,7 +127,7 @@ class KeyManager {
       const data = JSON.parse(fs.readFileSync(KEY_CACHE, 'utf8'));
       const now  = Date.now();
       this.keys.forEach(k => {
-        const d = data[k.key];
+        const d = data[keyFingerprint(k.key)];
         if (d?.okUntil > now) {
           k.okUntil = d.okUntil;
           const left = Math.ceil((d.okUntil - now) / 60000);
@@ -106,7 +141,9 @@ class KeyManager {
     try {
       const now = Date.now();
       const data = {};
-      this.keys.forEach(k => { if (k.okUntil > now) data[k.key] = { okUntil: k.okUntil }; });
+      this.keys.forEach(k => {
+        if (k.okUntil > now) data[keyFingerprint(k.key)] = { okUntil: k.okUntil };
+      });
       fs.writeFileSync(KEY_CACHE, JSON.stringify(data, null, 2));
     } catch (_) {}
   }
@@ -140,6 +177,14 @@ class KeyManager {
     k.okUntil = Date.now() + 30 * 60_000;
     k.fails++;
     console.warn(`[KEYS] Key #${k.id} QUOTA habis → cooldown 30m. (${reason?.slice(0, 80)})`);
+    this._saveCache();
+  }
+
+  // 401 Auth Error (Invalid / Expired Token) → cooldown 12 jam
+  authError(k, reason) {
+    k.okUntil = Date.now() + 12 * 3600_000;
+    k.fails++;
+    console.warn(`[GEMINI ⚠️] Key #${k.id} (${k.key.slice(0, 8)}...) Invalid/Expired (401) → dinonaktifkan 12 jam.`);
     this._saveCache();
   }
 
@@ -214,7 +259,10 @@ async function callGemini(apiKey, prompt, historyText) {
         err.status = res.status;
         err.model  = modelName;
 
-        if (res.status === 429) {
+        if (res.status === 401) {
+          err.kind = 'auth_error';
+          throw err; // Key tidak valid, jangan buang waktu coba model lain
+        } else if (res.status === 429) {
           err.kind = /retry|per.?minute|rpm/i.test(msg) ? 'rpm' : 'quota';
           lastErr = err;
           // Coba model Gemini berikutnya yang quota pool-nya terpisah
@@ -238,12 +286,99 @@ async function callGemini(apiKey, prompt, historyText) {
       if (text) return text;
 
     } catch (fetchErr) {
+      if (fetchErr.kind === 'auth_error' || fetchErr.kind === 'quota') {
+        throw fetchErr;
+      }
       lastErr = fetchErr;
     }
   }
 
   throw lastErr || new Error('Semua model Gemini sedang limit.');
 }
+
+// ─── DeepSeek (xKiro API) Caller & Key Manager ───────────────────────────────
+const DEEPSEEK_BASE_URL = process.env.DEEPSEEK_BASE_URL || 'https://api.xkiro.com/v1';
+const DEEPSEEK_MODEL    = process.env.DEEPSEEK_MODEL || 'deepseek/deepseek-v4-pro';
+
+async function callDeepSeek(apiKey, prompt, historyText) {
+  const userContent = historyText
+    ? `${historyText}\n\nPESAN TERBARU PROSPEK: ${prompt}`
+    : `PESAN PROSPEK: ${prompt}`;
+
+  const res = await fetch(`${DEEPSEEK_BASE_URL}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: DEEPSEEK_MODEL,
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userContent }
+      ],
+      temperature: 0.7,
+      max_tokens: 1024,
+      stream: false
+    }),
+    signal: AbortSignal.timeout(15_000)
+  });
+
+  if (!res.ok) {
+    const e    = await res.json().catch(() => ({}));
+    const msg  = e?.error?.message || `HTTP ${res.status}`;
+    const err  = new Error(msg);
+    err.status = res.status;
+    err.kind   = res.status === 429 ? 'rpm' : (res.status === 403 ? 'quota' : 'other');
+    throw err;
+  }
+
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content ?? '';
+}
+
+class DeepSeekKeyManager {
+  constructor() {
+    this.keys = [];
+    (process.env.DEEPSEEK_API_KEYS || '').split(',').forEach(k => k.trim() && this.keys.push({ id: this.keys.length + 1, key: k.trim(), okUntil: 0, wins: 0, fails: 0 }));
+    if (process.env.DEEPSEEK_API_KEY?.trim() && !this.keys.some(k => k.key === process.env.DEEPSEEK_API_KEY.trim())) {
+      this.keys.push({ id: this.keys.length + 1, key: process.env.DEEPSEEK_API_KEY.trim(), okUntil: 0, wins: 0, fails: 0 });
+    }
+    for (let i = 1; i <= 10; i++) {
+      const k = process.env[`DEEPSEEK_API_KEY_${i}`]?.trim();
+      if (k && !this.keys.some(x => x.key === k)) {
+        this.keys.push({ id: this.keys.length + 1, key: k, okUntil: 0, wins: 0, fails: 0 });
+      }
+    }
+    this._idx = 0;
+    if (this.keys.length > 0) {
+      console.log(`[DEEPSEEK] ${this.keys.length} DeepSeek API key dimuat (${DEEPSEEK_MODEL}).`);
+    }
+  }
+
+  hasKeys() { return this.keys.length > 0; }
+
+  next() {
+    const now = Date.now();
+    for (let i = 0; i < this.keys.length; i++) {
+      const k = this.keys[(this._idx + i) % this.keys.length];
+      if (k.okUntil <= now) {
+        this._idx = (this._idx + i + 1) % this.keys.length;
+        return k;
+      }
+    }
+    return null;
+  }
+
+  success(k) { k.wins++; }
+  rpmLimit(k) {
+    k.okUntil = Date.now() + 60_000;
+    k.fails++;
+    console.warn(`[DEEPSEEK] Key #${k.id} RPM limit → 60s cooldown.`);
+  }
+}
+
+const deepseekKeys = new DeepSeekKeyManager();
 
 // ─── Groq caller (fallback) ───────────────────────────────────────────────────
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
@@ -452,6 +587,7 @@ OUTPUT HARUS FORMAT JSON MURNI:
 
 // ─── Conversation history (30 turns buffer + Media tracking) ───────────────────
 const histories = new Map();   // sender → [{role, text, triggers: []}]
+const historyActivity = new Map();
 
 function getHistory(sender) {
   if (!histories.has(sender)) histories.set(sender, []);
@@ -461,8 +597,23 @@ function getHistory(sender) {
 function pushHistory(sender, role, text, triggers = []) {
   const h = getHistory(sender);
   h.push({ role, text, triggers: Array.isArray(triggers) ? triggers : [] });
+  historyActivity.set(sender, Date.now());
   if (h.length > 30) h.shift();   // memori hingga 30 percakapan
 }
+
+// Hindari memori terus bertambah jika bot menerima banyak nomor berbeda.
+setInterval(() => {
+  const expiredBefore = Date.now() - config.historyTtlMs;
+  for (const [sender, lastActivity] of historyActivity) {
+    if (lastActivity < expiredBefore && !userStates.has(sender)) {
+      histories.delete(sender);
+      historyActivity.delete(sender);
+    }
+  }
+  for (const [key, sentAt] of sentMaps) {
+    if (sentAt < expiredBefore) sentMaps.delete(key);
+  }
+}, Math.min(config.historyTtlMs, 60 * 60_000)).unref();
 
 function buildHistoryText(sender) {
   const h = getHistory(sender);
@@ -501,12 +652,9 @@ const PROFANITY = [
   /\b(fuck|shit|bitch|bastard|asshole|cunt|dick)\b/i
 ];
 const COLD = [
-  'Kau pikir cukup pintar? Huh, pulang dan belajar kembali bocah!',
-  'Bukan tempatnya badut sirkus beraksi di sini. Pulang sana!',
-  'Maaf, kapasitas otakmu belum cukup buat nguji bot ini. Belajar lagi!',
-  'Gak ada waktu ngeladenin ketikan gak jelas. Sana balik sekolah dulu!',
-  'Segitu doang kemampuannya? Perbaiki adabmu dulu ya!',
-  'Tong kosong nyaring bunyinya itu nyata. Belajar lagi sana!'
+  'Ariel siap bantu kalau kita ngobrol dengan bahasa yang baik ya, Kak 🙏 Ada info rumah yang ingin ditanyakan?',
+  'Yuk kita lanjut dengan bahasa yang sopan, Kak 😊 Ariel siap bantu soal lokasi, harga, atau KPR.',
+  'Ariel tetap siap membantu, Kak. Mohon gunakan bahasa yang baik agar konsultasinya nyaman ya 🙏'
 ];
 const hasProfanity = t => PROFANITY.some(r => r.test(t));
 const coldReply    = () => COLD[Math.floor(Math.random() * COLD.length)];
@@ -697,7 +845,9 @@ async function queryAI(message, sender) {
 
     } catch (err) {
       const kind = err.kind || 'other';
-      if (kind === 'rpm') {
+      if (kind === 'auth_error') {
+        keys.authError(k, err.message);
+      } else if (kind === 'rpm') {
         keys.rpmLimit(k);
       } else if (kind === 'quota') {
         keys.quotaLimit(k, err.message);
@@ -708,7 +858,34 @@ async function queryAI(message, sender) {
     }
   }
 
-  // 4. Groq fallback (jika semua Gemini key habis/limit)
+  // 4. DeepSeek (xKiro API) fallback
+  if (deepseekKeys.hasKeys()) {
+    const dk = deepseekKeys.next();
+    if (dk) {
+      try {
+        const raw    = await callDeepSeek(dk.key, message, histText);
+        const parsed = parseAIResponse(raw);
+        deepseekKeys.success(dk);
+        console.log(`[DEEPSEEK ✅] Key #${dk.id} OK.`);
+
+        if (parsed) {
+          if (explicitTriggers.length > 0 && parsed.trigger_actions.length === 0) {
+            parsed.trigger_actions = explicitTriggers;
+          }
+          parsed.trigger_actions = sanitizeTriggers(parsed.trigger_actions, sender, message);
+          parsed.reply_text = safeReply(parsed.reply_text, parsed.trigger_actions);
+          pushHistory(sender, 'user', message);
+          pushHistory(sender, 'assistant', parsed.reply_text, parsed.trigger_actions);
+          return parsed;
+        }
+      } catch (err) {
+        deepseekKeys.rpmLimit(dk);
+        console.warn(`[DEEPSEEK] Error: ${err.message?.slice(0, 80)}`);
+      }
+    }
+  }
+
+  // 5. Groq fallback (jika Gemini & DeepSeek habis/limit)
   if (groqKeys.hasKeys()) {
     const gk = groqKeys.next();
     if (gk) {
@@ -735,7 +912,7 @@ async function queryAI(message, sender) {
     }
   }
 
-  // 5. Final fallback (semua provider habis)
+  // 6. Final fallback (semua provider habis)
   const cleanTriggers = sanitizeTriggers(explicitTriggers, sender, message);
   const fallbackText = cleanTriggers.length > 0
     ? defaultReply(cleanTriggers)
@@ -765,11 +942,11 @@ async function sendMedia(client, chatId, trigger, userMsg) {
   if (type === 'MAPS') {
     const key = `${chatId}:${trigger}`;
     const forceResend = /kirim ulang|minta lagi|sharelok lagi|maps lagi/i.test(userMsg);
-    if (sentMaps.get(key) && !forceResend) {
+    if (sentMaps.has(key) && !forceResend) {
       console.log(`[MEDIA] MAPS ${trigger} sudah dikirim, skip duplikasi.`);
       return;
     }
-    sentMaps.set(key, true);
+    sentMaps.set(key, Date.now());
   }
 
   try {
@@ -814,6 +991,7 @@ for (const p of CHROME_PATHS) if (fs.existsSync(p)) { chromePath = p; break; }
 
 const wa = new Client({
   authStrategy: new LocalAuth({ clientId: 'pesona-kahuripan-bot' }),
+  authTimeoutMs: 120_000,
   puppeteer: {
     headless: true,
     ...(chromePath ? { executablePath: chromePath } : {}),
@@ -838,24 +1016,29 @@ wa.on('authenticated', () => {
   io.emit('status', { state: 'authenticated' });
 });
 
-wa.on('ready', () => {
-  const info   = wa.info;
-  const name   = info?.pushname || 'Ariel Pesona Kahuripan';
-  const phone  = info?.wid?.user || '';
-  currentBotStatus = 'ready';
-  botAccountInfo   = { user: name, phone };
-  currentQr        = null;
-  console.log(`[WA] Ready: ${name} (${phone})`);
-  io.emit('ready', { user: name, phone, timestamp: new Date().toISOString() });
+wa.on('ready', async () => {
+  try {
+    currentBotStatus = 'ready';
+    currentQr        = null;
+    let name  = 'Ariel Pesona Kahuripan';
+    let phone = '';
+    try {
+      const info = wa.info;
+      name  = info?.pushname || name;
+      phone = info?.wid?.user || '';
+    } catch (_) {}
+    botAccountInfo = { user: name, phone };
+    console.log(`[WA] Ready: ${name} (${phone})`);
+    io.emit('ready', { user: name, phone, timestamp: new Date().toISOString() });
+  } catch (errReady) {
+    console.warn('[WA] Ready handler notice:', errReady.message);
+  }
 });
 
 wa.on('auth_failure', msg => {
   console.error('[WA] Auth failure:', msg);
   currentBotStatus = 'initializing';
-  io.emit('status', { state: 'initializing', text: 'Auth gagal, generate QR baru...' });
-  setTimeout(async () => {
-    try { await wa.destroy().catch(() => {}); wa.initialize(); } catch (_) {}
-  }, 2000);
+  io.emit('status', { state: 'initializing', text: 'Auth gagal, silakan scan QR baru...' });
 });
 
 wa.on('disconnected', reason => {
@@ -863,15 +1046,13 @@ wa.on('disconnected', reason => {
   currentBotStatus = 'initializing';
   botAccountInfo   = null;
   currentQr        = null;
-  io.emit('status', { state: 'initializing', text: 'Terputus, reconnect...' });
-  setTimeout(async () => {
-    try { await wa.destroy().catch(() => {}); wa.initialize(); } catch (_) {}
-  }, 2000);
+  io.emit('status', { state: 'initializing', text: 'Terputus dari WhatsApp.' });
 });
 
 // ─── Message handler ──────────────────────────────────────────────────────────
 // userState: sender → { pendingMsgs, lastMsg, timer, isProcessing }
 const userStates = new Map();
+const DEBOUNCE_MS = config.debounceMs;
 
 async function processMessages(sender) {
   const st = userStates.get(sender);
@@ -887,25 +1068,22 @@ async function processMessages(sender) {
   st.pendingMsgs = [];
   st.lastMsg     = null;
 
-  // Format: jika >1 pesan, susun bernomor agar AI tahu multi-pertanyaan
+  // Format: jika >1 pesan, satukan menjadi 1 teks konteks utuh untuk AI
   let combined;
   if (msgs.length === 1) {
     combined = msgs[0];
   } else {
-    combined = `Prospek mengirim ${msgs.length} pesan berturut-turut:\n` +
-      msgs.map((m, i) => `${i + 1}. "${m}"`).join('\n') +
-      '\n\nJawab SEMUA pertanyaan di atas dalam 1 balasan yang runtut dan natural.';
+    combined = msgs.join('\n');
   }
 
-  console.log(`[QUEUE] ${sender}: ${msgs.length} pesan → 1 API call.`);
+  console.log(`[QUEUE] ${sender}: ${msgs.length} pesan beruntun digabung → 1 API call.`);
 
-  // Simulasi typing
+  // Simulasi typing natural
   await sleep(Math.floor(Math.random() * 800) + 1200);
 
   try {
     const { reply_text, trigger_actions } = await queryAI(combined, sender);
 
-    countOut++;
     const outData = {
       to: sender,
       body: reply_text,
@@ -913,8 +1091,6 @@ async function processMessages(sender) {
       triggers: trigger_actions,
       timestamp: new Date().toISOString()
     };
-    recentLogs.push({ type: 'out', data: outData });
-    if (recentLogs.length > 60) recentLogs.shift();
 
     if (lastMsg && typeof lastMsg.reply === 'function') {
       try {
@@ -926,11 +1102,16 @@ async function processMessages(sender) {
     } else {
       await wa.sendMessage(sender, reply_text);
     }
+
+    // Statistik dan dashboard hanya mencatat pesan yang benar-benar berhasil dikirim.
+    countOut++;
+    recentLogs.push({ type: 'out', data: outData });
+    if (recentLogs.length > 60) recentLogs.shift();
     console.log(`[MSG OUT] ${sender}: "${reply_text}" [${trigger_actions.join(',') || 'NONE'}]`);
     io.emit('message_out', outData);
     io.emit('stats_update', { countIn, countOut });
 
-    // Kirim semua media yang di-trigger (PL + VIDEO sekaligus jika diminta)
+    // Kirim media yang di-trigger jika ada
     for (const trigger of trigger_actions) {
       await sleep(1500);
       await sendMedia(wa, sender, trigger, combined);
@@ -941,11 +1122,11 @@ async function processMessages(sender) {
 
   st.isProcessing = false;
 
-  // Setelah selesai, jika ada pesan baru yang masuk selama processing → proses langsung
+  // Setelah selesai, jika ada pesan baru yang masuk saat processing → beri waktu debounce lagi agar tidak spam
   if (st.pendingMsgs.length > 0) {
-    console.log(`[QUEUE] ${sender}: ${st.pendingMsgs.length} pesan baru setelah processing.`);
-    await sleep(500);
-    await processMessages(sender);
+    console.log(`[QUEUE] ${sender}: ${st.pendingMsgs.length} pesan baru masuk saat processing, debounce ${DEBOUNCE_MS}ms.`);
+    clearTimeout(st.timer);
+    st.timer = setTimeout(() => processMessages(sender), DEBOUNCE_MS);
   } else {
     userStates.delete(sender);
   }
@@ -1004,16 +1185,15 @@ wa.on('message', async msg => {
     st.pendingMsgs.push(body);
     st.lastMsg = msg;
 
-    // Jika bot sedang processing pesan sebelumnya → simpan dulu, tidak perlu timer baru
-    // Pesan akan diproses setelah batch sebelumnya selesai (lihat processMessages)
+    // Jika bot sedang processing pesan sebelumnya → simpan di antrian
     if (st.isProcessing) {
       console.log(`[QUEUE] ${sender}: sedang processing, pesan "${body}" dimasukkan antrian.`);
       return;
     }
 
-    // Reset debounce timer — tunggu 3 detik sejak pesan terakhir sebelum membalas
+    // Reset debounce timer — tunggu DEBOUNCE_MS sejak pesan TERAKHIR masuk sebelum memanggil AI
     clearTimeout(st.timer);
-    st.timer = setTimeout(() => processMessages(sender), 3000);
+    st.timer = setTimeout(() => processMessages(sender), DEBOUNCE_MS);
 
   } catch (e) {
     console.error('[MSG PIPELINE ERROR]:', e.message);
@@ -1036,13 +1216,13 @@ io.on('connection', socket => {
   socket.emit('recent_logs', recentLogs);
 
   socket.on('toggle_bot', data => {
-    isBotActive = Boolean(data.enabled);
+    isBotActive = Boolean(data?.enabled);
     console.log(`[TOGGLE] Bot: ${isBotActive ? 'ON' : 'OFF'}`);
     io.emit('operational_status', getOpStatus());
   });
 
   socket.on('toggle_contact_filter', data => {
-    filterSavedContact = Boolean(data.onlyNew);
+    filterSavedContact = Boolean(data?.onlyNew);
     console.log(`[TOGGLE] Filter kontak: ${filterSavedContact ? 'Hanya nomor baru' : 'Semua nomor'}`);
     io.emit('operational_status', getOpStatus());
   });
@@ -1056,13 +1236,38 @@ io.on('connection', socket => {
 });
 
 // ─── Boot ─────────────────────────────────────────────────────────────────────
-server.listen(PORT, () => {
+server.listen(PORT, config.host, () => {
   console.log('═══════════════════════════════════════════════════════');
   console.log(`🚀 Pesona Kahuripan WhatsApp Bot — Port ${PORT}`);
-  console.log(`🤖 Models: ${GEMINI_MODELS.join(', ')}`);
-  console.log(`🔑 Keys: ${keys.keys.length} Gemini API Key`);
-  console.log(`📱 Dashboard: http://localhost:${PORT}`);
+  console.log(`🤖 Gemini: ${GEMINI_MODELS.join(', ')} (${keys.keys.length} Keys)`);
+  if (deepseekKeys.hasKeys()) {
+    console.log(`🧠 DeepSeek: ${DEEPSEEK_MODEL} (${deepseekKeys.keys.length} Keys via xKiro API)`);
+  }
+  console.log(`📱 Dashboard: http://${config.host}:${PORT}`);
+  console.log(`🕒 Jam kerja: ${config.operatingStartHour}.00–${config.operatingEndHour}.00 (${config.operatingTimeZone})`);
   console.log('═══════════════════════════════════════════════════════');
 });
 
-wa.initialize();
+wa.initialize().catch(err => {
+  console.error('[WA] Gagal menginisialisasi client:', err.message);
+  currentBotStatus = 'disconnected';
+  io.emit('status', { state: 'disconnected', text: 'Gagal menginisialisasi WhatsApp.' });
+});
+
+let shuttingDown = false;
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`[SYSTEM] ${signal} diterima, menutup aplikasi...`);
+
+  for (const state of userStates.values()) clearTimeout(state.timer);
+  await Promise.allSettled([
+    new Promise(resolve => io.close(resolve)),
+    new Promise(resolve => server.close(resolve)),
+    wa.destroy()
+  ]);
+  process.exit(0);
+}
+
+process.once('SIGINT', () => shutdown('SIGINT'));
+process.once('SIGTERM', () => shutdown('SIGTERM'));

@@ -1,0 +1,17 @@
+FOLDER MEDIA & TEMPLATE PESONA KAHURIPAN (MULTI-LOKASI)
+=========================================================
+1. Template Teks Maps (.txt):
+   - mapspk14.txt (Cileungsi Bogor Timur)
+   - mapspk15.txt (Cileungsi Mega Township)
+   - mapspk16.txt (Klapanunggal Sertifikat SHM)
+   - mapspk17.txt (Kasemen Kota Serang Banten)
+   - mapspk18.txt (Parung Panjang KRL Bogor Barat)
+   * Saat prospek minta alamat / sharelok, bot otomatis mengirimkan teks yang berisi alamat galeri dan tautan link Google Maps yang bisa langsung diklik prospek.
+
+2. Pricelist Gambar (PL):
+   - PL_PK14.jpg / PL_PK15.jpg / PL_PK16.jpg / PL_PK17.jpg / PL_PK18.jpg
+   * Kirim otomatis brosur/tabel cicilan saat prospek minta simulasi angsuran.
+
+3. Video Unit (.mp4):
+   - video_pk14.mp4 / video_pk15.mp4 / video_pk16.mp4 / video_pk17.mp4 / video_pk18.mp4
+   * Kirim otomatis video review suasana unit rumah saat prospek minta video.

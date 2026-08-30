@@ -12,6 +12,11 @@ node_modules/
 *.log
 npm-debug.log*
 
+# Runtime state
+data/*.tmp
+data/key_status.json
+coverage/
+
 # OS
 .DS_Store
 Thumbs.db
