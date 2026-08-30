@@ -10,6 +10,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { loadConfig, isWithinOperatingHours } = require('./src/config');
 const { createDashboardAuth, isAuthorized } = require('./src/dashboard-auth');
+const { ConversationStore } = require('./src/conversation-store');
 
 const config = loadConfig();
 
@@ -63,6 +64,7 @@ if (!fs.existsSync(MEDIA_DIR)) fs.mkdirSync(MEDIA_DIR, { recursive: true });
 
 const DATA_DIR = path.join(__dirname, 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+const conversationStore = new ConversationStore(path.join(DATA_DIR, 'conversations.json'));
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let currentQr          = null;
@@ -589,6 +591,21 @@ OUTPUT HARUS FORMAT JSON MURNI:
 const histories = new Map();   // sender → [{role, text, triggers: []}]
 const historyActivity = new Map();
 
+// Pulihkan konteks setiap nomor dari penyimpanan agar restart tidak mencampur
+// atau menghilangkan arah percakapan prospek.
+for (const summary of conversationStore.list()) {
+  const conversation = conversationStore.get(summary.id);
+  const restored = conversation.messages.slice(-30).map(message => ({
+    role: message.direction === 'in' ? 'user' : 'assistant',
+    text: message.body,
+    triggers: Array.isArray(message.triggers) ? message.triggers : []
+  }));
+  if (restored.length > 0) {
+    histories.set(summary.id, restored);
+    historyActivity.set(summary.id, Date.parse(summary.lastMessageAt) || Date.now());
+  }
+}
+
 function getHistory(sender) {
   if (!histories.has(sender)) histories.set(sender, []);
   return histories.get(sender);
@@ -641,6 +658,24 @@ function buildHistoryText(sender) {
   }).join('\n');
 
   return mediaHeader + 'RIWAYAT PERCAKAPAN LENGKAP:\n' + chatLines;
+}
+
+function hydrateHistoryFromStore(sender, currentMessage) {
+  if (histories.get(sender)?.length) return;
+  const conversation = conversationStore.get(sender);
+  if (!conversation?.messages?.length) return;
+
+  const messages = conversation.messages.slice(-30);
+  const latest = messages[messages.length - 1];
+  if (latest?.direction === 'in' && latest.body === currentMessage) messages.pop();
+  if (!messages.length) return;
+
+  histories.set(sender, messages.map(message => ({
+    role: message.direction === 'in' ? 'user' : 'assistant',
+    text: message.body,
+    triggers: Array.isArray(message.triggers) ? message.triggers : []
+  })));
+  historyActivity.set(sender, Date.now());
 }
 
 // ─── Profanity & cold responses ───────────────────────────────────────────────
@@ -790,6 +825,8 @@ function defaultReply(triggers) {
 
 // ─── Query AI (main function) ─────────────────────────────────────────────────
 async function queryAI(message, sender) {
+  hydrateHistoryFromStore(sender, message);
+
   // 1. Profanity filter
   if (hasProfanity(message)) {
     const r = coldReply();
@@ -1060,6 +1097,13 @@ async function processMessages(sender) {
     userStates.delete(sender);
     return;
   }
+  if (conversationStore.isBotPaused(sender)) {
+    for (const message of st.pendingMsgs) pushHistory(sender, 'user', message);
+    clearTimeout(st.timer);
+    userStates.delete(sender);
+    console.log(`[FILTER] Bot untuk ${sender} sedang diambil alih sales.`);
+    return;
+  }
 
   // Ambil semua pesan yang antri, kosongkan pending
   st.isProcessing = true;
@@ -1107,8 +1151,10 @@ async function processMessages(sender) {
     countOut++;
     recentLogs.push({ type: 'out', data: outData });
     if (recentLogs.length > 60) recentLogs.shift();
+    const stored = conversationStore.addOutgoing(sender, reply_text, outData);
     console.log(`[MSG OUT] ${sender}: "${reply_text}" [${trigger_actions.join(',') || 'NONE'}]`);
     io.emit('message_out', outData);
+    io.emit('conversation_message', { contactId: sender, ...stored });
     io.emit('stats_update', { countIn, countOut });
 
     // Kirim media yang di-trigger jika ada
@@ -1162,18 +1208,26 @@ wa.on('message', async msg => {
     };
     recentLogs.push({ type: 'in', data: inData });
     if (recentLogs.length > 60) recentLogs.shift();
+    const stored = conversationStore.addIncoming(sender, body, inData);
 
     // Emit ke dashboard
     io.emit('message_in', inData);
+    io.emit('conversation_message', { contactId: sender, ...stored });
     io.emit('stats_update', { countIn, countOut });
 
     // Filter kontak tersimpan (hanya balas nomor yang tidak tersimpan)
     if (filterSavedContact && isSaved) {
+      pushHistory(sender, 'user', body);
       console.log(`[FILTER 🛡️] Kontak tersimpan "${contactName || sender}" (${sender}) dilewati (tidak dibalas).`);
       return;
     }
-    if (!isBotActive)        { console.log(`[FILTER] Bot off, skip.`); return; }
-    if (!isOperatingHours()) { console.log(`[FILTER] Di luar jam kerja, skip.`); return; }
+    if (!isBotActive)        { pushHistory(sender, 'user', body); console.log(`[FILTER] Bot off, skip.`); return; }
+    if (conversationStore.isBotPaused(sender)) {
+      pushHistory(sender, 'user', body);
+      console.log(`[FILTER] ${sender} sedang ditangani sales, bot per nomor dilewati.`);
+      return;
+    }
+    if (!isOperatingHours()) { pushHistory(sender, 'user', body); console.log(`[FILTER] Di luar jam kerja, skip.`); return; }
 
     console.log(`[MSG IN] ${sender}: "${body}"`);
 
@@ -1214,6 +1268,64 @@ io.on('connection', socket => {
 
   socket.emit('operational_status', getOpStatus());
   socket.emit('recent_logs', recentLogs);
+  socket.emit('conversation_list', conversationStore.list());
+
+  socket.on('get_conversation', data => {
+    const contactId = typeof data === 'string' ? data : data?.contactId;
+    if (!contactId) return;
+    const summary = conversationStore.markRead(contactId);
+    const conversation = conversationStore.get(contactId);
+    if (!conversation) return;
+    socket.emit('conversation_data', conversation);
+    if (summary) io.emit('conversation_updated', summary);
+  });
+
+  socket.on('set_contact_bot', data => {
+    const contactId = data?.contactId;
+    if (!contactId) return;
+    const summary = conversationStore.setBotPaused(contactId, data.paused);
+    if (summary.botPaused) {
+      const state = userStates.get(contactId);
+      if (state) {
+        clearTimeout(state.timer);
+        for (const message of state.pendingMsgs) pushHistory(contactId, 'user', message);
+      }
+      userStates.delete(contactId);
+    }
+    io.emit('conversation_updated', summary);
+  });
+
+  socket.on('set_lead_status', data => {
+    const summary = conversationStore.setLeadStatus(data?.contactId, data?.status);
+    if (summary) io.emit('conversation_updated', summary);
+  });
+
+  socket.on('send_manual_message', async (data, acknowledge = () => {}) => {
+    const contactId = data?.contactId;
+    const body = typeof data?.body === 'string' ? data.body.trim() : '';
+    if (!contactId || !body || body.length > 4000) {
+      acknowledge({ ok: false, error: 'Pesan tidak valid.' });
+      return;
+    }
+    if (currentBotStatus !== 'ready') {
+      acknowledge({ ok: false, error: 'WhatsApp belum terhubung.' });
+      return;
+    }
+
+    try {
+      await wa.sendMessage(contactId, body);
+      const timestamp = new Date().toISOString();
+      const stored = conversationStore.addOutgoing(contactId, body, { timestamp, sentBy: 'sales' });
+      pushHistory(contactId, 'assistant', body, []);
+      countOut++;
+      io.emit('conversation_message', { contactId, ...stored });
+      io.emit('stats_update', { countIn, countOut });
+      acknowledge({ ok: true });
+    } catch (error) {
+      console.error(`[MANUAL MESSAGE] ${contactId}: ${error.message}`);
+      acknowledge({ ok: false, error: 'Pesan gagal dikirim.' });
+    }
+  });
 
   socket.on('toggle_bot', data => {
     isBotActive = Boolean(data?.enabled);
@@ -1261,6 +1373,7 @@ async function shutdown(signal) {
   console.log(`[SYSTEM] ${signal} diterima, menutup aplikasi...`);
 
   for (const state of userStates.values()) clearTimeout(state.timer);
+  conversationStore.flush();
   await Promise.allSettled([
     new Promise(resolve => io.close(resolve)),
     new Promise(resolve => server.close(resolve)),

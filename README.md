@@ -2,6 +2,8 @@
 
 Bot WhatsApp untuk membalas chat prospek Pesona Kahuripan secara otomatis, menjaga konteks percakapan, dan mengirim brosur, video, atau lokasi sesuai permintaan prospek. Dashboard lokal menampilkan status koneksi, jumlah pesan, dan log percakapan terbaru.
 
+Dashboard menggunakan pola inbox seperti WhatsApp: daftar prospek di kiri, riwayat satu nomor di tengah, dan detail prospek di kanan. Percakapan disimpan terpisah per nomor di `data/conversations.json`, sehingga tidak bercampur dan dapat dipulihkan setelah aplikasi restart.
+
 ## Persiapan
 
 - Node.js 18 atau lebih baru
@@ -18,6 +20,17 @@ Bot WhatsApp untuk membalas chat prospek Pesona Kahuripan secara otomatis, menja
 5. Buka `http://127.0.0.1:3000`, lalu scan QR WhatsApp bila diminta.
 
 Untuk pengembangan gunakan `npm run dev`. Jalankan `npm run check` sebelum perubahan dipakai untuk memastikan sintaks dan pemeriksaan otomatis lolos.
+
+Gunakan `npm run preview` untuk melihat dashboard dengan data contoh tanpa menghubungkan akun WhatsApp atau mengirim pesan sungguhan.
+
+## Pengelolaan inbox
+
+- Cari prospek berdasarkan nama, nomor, atau proyek.
+- Filter chat yang belum dibaca atau sedang ditangani sales.
+- Pause auto-reply untuk satu nomor ketika sales mengambil alih percakapan.
+- Balas manual dari panel percakapan tanpa mematikan bot global.
+- Tandai tahap prospek: baru, qualified, survei, booking, follow-up, atau selesai.
+- Proyek yang disebut prospek atau media yang dikirim akan terdeteksi otomatis.
 
 ## Konfigurasi penting
 

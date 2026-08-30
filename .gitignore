@@ -15,6 +15,7 @@ npm-debug.log*
 # Runtime state
 data/*.tmp
 data/key_status.json
+data/conversations.json
 coverage/
 
 # OS

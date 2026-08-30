@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
+    "preview": "node scripts/preview-dashboard.js",
     "check": "node --check server.js && node --test",
     "test": "node --test"
   },
