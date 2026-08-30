@@ -12,6 +12,7 @@ const { loadConfig, isWithinOperatingHours } = require('./src/config');
 const { createDashboardAuth, isAuthorized } = require('./src/dashboard-auth');
 const { ConversationStore } = require('./src/conversation-store');
 const { resolveWhatsAppIdentity } = require('./src/whatsapp-identity');
+const { callChatCompletion } = require('./src/openai-compatible-client');
 
 const config = loadConfig();
 
@@ -382,6 +383,71 @@ class DeepSeekKeyManager {
 }
 
 const deepseekKeys = new DeepSeekKeyManager();
+
+// ─── NVIDIA NIM OpenAI-compatible fallback ──────────────────────────────────
+const NVIDIA_BASE_URL = process.env.NVIDIA_BASE_URL || 'https://integrate.api.nvidia.com/v1';
+const NVIDIA_MODEL = process.env.NVIDIA_MODEL || 'openai/gpt-oss-120b';
+
+function loadNvidiaKeys() {
+  const values = new Set();
+  (process.env.NVIDIA_API_KEYS || '').split(',').forEach(key => key.trim() && values.add(key.trim()));
+  if (process.env.NVIDIA_API_KEY?.trim()) values.add(process.env.NVIDIA_API_KEY.trim());
+  for (let index = 1; index <= 10; index++) {
+    const key = process.env[`NVIDIA_API_KEY_${index}`]?.trim();
+    if (key) values.add(key);
+  }
+  return [...values];
+}
+
+class NvidiaKeyManager {
+  constructor() {
+    this.keys = loadNvidiaKeys().map((key, index) => ({
+      id: index + 1, key, okUntil: 0, wins: 0, fails: 0
+    }));
+    this.index = 0;
+    if (this.keys.length) console.log(`[NVIDIA] ${this.keys.length} API key dimuat (${NVIDIA_MODEL}).`);
+  }
+
+  hasKeys() { return this.keys.length > 0; }
+
+  next() {
+    const now = Date.now();
+    for (let offset = 0; offset < this.keys.length; offset++) {
+      const key = this.keys[(this.index + offset) % this.keys.length];
+      if (key.okUntil <= now) {
+        this.index = (this.index + offset + 1) % this.keys.length;
+        return key;
+      }
+    }
+    return null;
+  }
+
+  success(key) { key.wins++; }
+
+  failure(key, kind) {
+    const cooldown = kind === 'auth_error' ? 12 * 3600_000 : (kind === 'rpm' ? 70_000 : 2 * 60_000);
+    key.okUntil = Date.now() + cooldown;
+    key.fails++;
+    console.warn(`[NVIDIA] Key #${key.id} cooldown ${Math.ceil(cooldown / 1000)}s (${kind}).`);
+  }
+}
+
+const nvidiaKeys = new NvidiaKeyManager();
+
+async function callNvidia(apiKey, prompt, historyText) {
+  return callChatCompletion({
+    apiKey,
+    baseUrl: NVIDIA_BASE_URL,
+    model: NVIDIA_MODEL,
+    systemPrompt: SYSTEM_PROMPT,
+    prompt,
+    historyText,
+    temperature: 0.7,
+    topP: 1,
+    maxTokens: 4096,
+    timeoutMs: 45_000
+  });
+}
 
 // ─── Groq caller (fallback) ───────────────────────────────────────────────────
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
@@ -919,7 +985,37 @@ async function queryAI(message, sender) {
     }
   }
 
-  // 4. DeepSeek (xKiro API) fallback
+  // 4. NVIDIA NIM fallback (OpenAI-compatible)
+  if (nvidiaKeys.hasKeys()) {
+    for (let attempt = 0; attempt < nvidiaKeys.keys.length; attempt++) {
+      const nk = nvidiaKeys.next();
+      if (!nk) break;
+      try {
+        const raw = await callNvidia(nk.key, message, histText);
+        const parsed = parseAIResponse(raw);
+        nvidiaKeys.success(nk);
+        if (!parsed) {
+          console.warn(`[NVIDIA] Key #${nk.id} menghasilkan respons non-JSON.`);
+          continue;
+        }
+
+        if (explicitTriggers.length > 0 && parsed.trigger_actions.length === 0) {
+          parsed.trigger_actions = explicitTriggers;
+        }
+        parsed.trigger_actions = sanitizeTriggers(parsed.trigger_actions, sender, message);
+        parsed.reply_text = safeReply(parsed.reply_text, parsed.trigger_actions);
+        pushHistory(sender, 'user', message);
+        pushHistory(sender, 'assistant', parsed.reply_text, parsed.trigger_actions);
+        console.log(`[NVIDIA ✅] Key #${nk.id} OK (${NVIDIA_MODEL}).`);
+        return parsed;
+      } catch (error) {
+        nvidiaKeys.failure(nk, error.kind || 'other');
+        console.warn(`[NVIDIA] Error: ${error.message?.slice(0, 80)}`);
+      }
+    }
+  }
+
+  // 5. DeepSeek (xKiro API) fallback
   if (deepseekKeys.hasKeys()) {
     const dk = deepseekKeys.next();
     if (dk) {
@@ -946,7 +1042,7 @@ async function queryAI(message, sender) {
     }
   }
 
-  // 5. Groq fallback (jika Gemini & DeepSeek habis/limit)
+  // 6. Groq fallback (jika provider sebelumnya habis/limit)
   if (groqKeys.hasKeys()) {
     const gk = groqKeys.next();
     if (gk) {
@@ -973,7 +1069,7 @@ async function queryAI(message, sender) {
     }
   }
 
-  // 6. Final fallback (semua provider habis)
+  // 7. Final fallback (semua provider habis)
   const cleanTriggers = sanitizeTriggers(explicitTriggers, sender, message);
   const fallbackText = cleanTriggers.length > 0
     ? defaultReply(cleanTriggers)
@@ -1388,6 +1484,9 @@ server.listen(PORT, config.host, () => {
   console.log('═══════════════════════════════════════════════════════');
   console.log(`🚀 Pesona Kahuripan WhatsApp Bot — Port ${PORT}`);
   console.log(`🤖 Gemini: ${GEMINI_MODELS.join(', ')} (${keys.keys.length} Keys)`);
+  if (nvidiaKeys.hasKeys()) {
+    console.log(`🟢 NVIDIA NIM: ${NVIDIA_MODEL} (${nvidiaKeys.keys.length} Keys)`);
+  }
   if (deepseekKeys.hasKeys()) {
     console.log(`🧠 DeepSeek: ${DEEPSEEK_MODEL} (${deepseekKeys.keys.length} Keys via xKiro API)`);
   }

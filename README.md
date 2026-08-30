@@ -9,7 +9,7 @@ Dashboard menggunakan pola inbox seperti WhatsApp: daftar prospek di kiri, riway
 - Node.js 18 atau lebih baru
 - Google Chrome
 - Nomor WhatsApp Business yang akan digunakan bot
-- Minimal satu Gemini API key; DeepSeek dan Groq bersifat opsional sebagai cadangan
+- Minimal satu API key provider: Gemini, NVIDIA NIM, DeepSeek, atau Groq
 
 ## Menjalankan
 
@@ -40,6 +40,9 @@ Gunakan `npm run preview` untuk melihat dashboard dengan data contoh tanpa mengh
 | `HOST` | `127.0.0.1` | Alamat dashboard. Default hanya dapat diakses dari komputer bot. |
 | `PORT` | `3000` | Port dashboard. |
 | `DASHBOARD_TOKEN` | kosong | Kata sandi dashboard. Wajib jika `HOST` dibuka ke jaringan. Username dapat diisi bebas. |
+| `NVIDIA_API_KEY` | kosong | API key NVIDIA NIM untuk fallback model `openai/gpt-oss-120b`. |
+| `NVIDIA_BASE_URL` | NVIDIA NIM | Endpoint OpenAI-compatible NVIDIA. |
+| `NVIDIA_MODEL` | `openai/gpt-oss-120b` | Model NVIDIA yang digunakan. |
 | `OPERATING_TIMEZONE` | `Asia/Jakarta` | Zona waktu jam kerja. |
 | `OPERATING_START_HOUR` | `8` | Jam mulai membalas otomatis. |
 | `OPERATING_END_HOUR` | `24` | Jam berhenti membalas otomatis. Mendukung rentang melewati tengah malam. |
