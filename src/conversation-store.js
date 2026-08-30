@@ -13,9 +13,16 @@ function inferProject(text = '', triggers = []) {
 }
 
 function cleanContact(raw = {}) {
+  const rawId = String(raw.id || raw.sender || '');
+  const phone = raw.phone && !(rawId.endsWith('@lid') && !raw.displayPhone)
+    ? String(raw.phone).replace(/\D/g, '')
+    : (rawId.endsWith('@lid') ? '' : rawId.replace(/@.+$/, '').replace(/\D/g, ''));
   return {
     id: String(raw.id || raw.sender || ''),
-    phone: String(raw.phone || raw.id || raw.sender || '').replace(/@.+$/, ''),
+    phone,
+    displayPhone: raw.displayPhone ? String(raw.displayPhone) : null,
+    whatsappId: raw.whatsappId ? String(raw.whatsappId) : String(raw.id || raw.sender || ''),
+    linkedId: raw.linkedId ? String(raw.linkedId) : null,
     contactName: raw.contactName ? String(raw.contactName) : null,
     isSaved: Boolean(raw.isSaved),
     project: raw.project || null,
@@ -54,16 +61,64 @@ class ConversationStore {
   }
 
   ensureContact(id, metadata = {}) {
-    const existing = this.contacts.get(id);
+    const aliasIds = [...new Set([
+      ...(Array.isArray(metadata.aliases) ? metadata.aliases : []),
+      metadata.whatsappId,
+      metadata.linkedId
+    ].filter(Boolean).map(String))];
+
+    let existing = this.contacts.get(id);
+    for (const aliasId of aliasIds) {
+      if (aliasId === id) continue;
+      const aliasContact = this.contacts.get(aliasId);
+      if (!aliasContact) continue;
+      if (existing) {
+        existing = this.mergeContacts(existing, aliasContact);
+      } else {
+        existing = aliasContact;
+        existing.id = id;
+      }
+      this.contacts.delete(aliasId);
+      this.contacts.set(id, existing);
+    }
+
     if (existing) {
       if (metadata.contactName) existing.contactName = String(metadata.contactName);
       if (metadata.isSaved !== undefined) existing.isSaved = Boolean(metadata.isSaved);
+      if (metadata.phone) existing.phone = String(metadata.phone).replace(/\D/g, '');
+      if (metadata.displayPhone) existing.displayPhone = String(metadata.displayPhone);
+      if (metadata.whatsappId) existing.whatsappId = String(metadata.whatsappId);
+      if (metadata.linkedId) existing.linkedId = String(metadata.linkedId);
       return existing;
     }
 
     const contact = cleanContact({ id, phone: id, ...metadata });
     this.contacts.set(id, contact);
     return contact;
+  }
+
+  mergeContacts(target, source) {
+    const seen = new Set(target.messages.map(message => message.id));
+    target.messages.push(...source.messages.filter(message => !seen.has(message.id)));
+    target.messages.sort((a, b) => String(a.timestamp).localeCompare(String(b.timestamp)));
+    if (target.messages.length > this.maxMessages) target.messages.splice(0, target.messages.length - this.maxMessages);
+
+    target.unread += source.unread;
+    target.contactName ||= source.contactName;
+    target.phone ||= source.phone;
+    target.displayPhone ||= source.displayPhone;
+    target.whatsappId ||= source.whatsappId;
+    target.linkedId ||= source.linkedId;
+    target.project ||= source.project;
+    target.botPaused ||= source.botPaused;
+    if (target.leadStatus === 'new' && source.leadStatus !== 'new') target.leadStatus = source.leadStatus;
+
+    if (String(source.lastMessageAt || '') > String(target.lastMessageAt || '')) {
+      target.lastMessage = source.lastMessage;
+      target.lastMessageAt = source.lastMessageAt;
+      target.lastDirection = source.lastDirection;
+    }
+    return target;
   }
 
   addIncoming(id, body, metadata = {}) {

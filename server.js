@@ -11,6 +11,7 @@ const crypto = require('crypto');
 const { loadConfig, isWithinOperatingHours } = require('./src/config');
 const { createDashboardAuth, isAuthorized } = require('./src/dashboard-auth');
 const { ConversationStore } = require('./src/conversation-store');
+const { resolveWhatsAppIdentity } = require('./src/whatsapp-identity');
 
 const config = loadConfig();
 
@@ -678,6 +679,29 @@ function hydrateHistoryFromStore(sender, currentMessage) {
   historyActivity.set(sender, Date.now());
 }
 
+function migrateRuntimeIdentity(previousId, resolvedId) {
+  if (!previousId || !resolvedId || previousId === resolvedId) return;
+  const previousHistory = histories.get(previousId) || [];
+  const resolvedHistory = histories.get(resolvedId) || [];
+  if (previousHistory.length) {
+    const combined = [...previousHistory, ...resolvedHistory];
+    const unique = combined.filter((item, index) => index === 0 || (
+      item.role !== combined[index - 1].role || item.text !== combined[index - 1].text
+    ));
+    histories.set(resolvedId, unique.slice(-30));
+    histories.delete(previousId);
+  }
+  const previousActivity = historyActivity.get(previousId) || 0;
+  if (previousActivity) {
+    historyActivity.set(resolvedId, Math.max(previousActivity, historyActivity.get(resolvedId) || 0));
+    historyActivity.delete(previousId);
+  }
+
+  const previousState = userStates.get(previousId);
+  if (previousState && !userStates.has(resolvedId)) userStates.set(resolvedId, previousState);
+  if (previousState) userStates.delete(previousId);
+}
+
 // ─── Profanity & cold responses ───────────────────────────────────────────────
 const PROFANITY = [
   /\b(ngentot|kontol|memek|jembut|peler|pepek|toket|tetek|kimak|puki)\b/i,
@@ -1183,7 +1207,7 @@ wa.on('message', async msg => {
     // Skip grup, broadcast, pesan dikirim bot sendiri
     if (msg.from === 'status@broadcast' || msg.from.includes('@g.us') || msg.fromMe) return;
 
-    const sender = msg.from;
+    const rawSender = msg.from;
     const body   = msg.body?.trim();
     if (!body) return;
 
@@ -1194,8 +1218,13 @@ wa.on('message', async msg => {
       isSaved     = Boolean(c?.isMyContact === true || (c?.name && typeof c.name === 'string' && c.name.trim().length > 0));
       contactName = c?.name || c?.pushname || null;
     } catch (err) {
-      console.warn(`[CONTACT ⚠️] Gagal ambil kontak ${sender}:`, err.message);
+      console.warn(`[CONTACT ⚠️] Gagal ambil kontak ${rawSender}:`, err.message);
     }
+
+    const identity = await resolveWhatsAppIdentity(wa, rawSender);
+    const sender = identity.id;
+    migrateRuntimeIdentity(rawSender, sender);
+    if (rawSender !== sender) io.emit('conversation_merged', { fromId: rawSender, toId: sender });
 
     countIn++;
     const inData = {
@@ -1204,6 +1233,11 @@ wa.on('message', async msg => {
       isSaved,
       isSavedContact: isSaved,
       contactName,
+      phone: identity.phone,
+      displayPhone: identity.displayPhone,
+      whatsappId: identity.whatsappId,
+      linkedId: identity.linkedId,
+      aliases: identity.aliases,
       timestamp: new Date().toISOString()
     };
     recentLogs.push({ type: 'in', data: inData });
@@ -1313,7 +1347,9 @@ io.on('connection', socket => {
     }
 
     try {
-      await wa.sendMessage(contactId, body);
+      const conversation = conversationStore.get(contactId);
+      const recipient = conversation?.id || conversation?.whatsappId || contactId;
+      await wa.sendMessage(recipient, body);
       const timestamp = new Date().toISOString();
       const stored = conversationStore.addOutgoing(contactId, body, { timestamp, sentBy: 'sales' });
       pushHistory(contactId, 'assistant', body, []);

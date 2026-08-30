@@ -39,3 +39,21 @@ test('infers project codes from messages and media triggers', () => {
   assert.equal(inferProject('', ['VIDEO_PK16']), 'PK16');
   assert.equal(inferProject('Halo'), null);
 });
+
+test('migrates an existing LID conversation to the resolved phone identity', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ariel-store-'));
+  const store = new ConversationStore(path.join(directory, 'conversations.json'));
+  store.addIncoming('41369141817351@lid', 'Halo dari LID');
+  assert.equal(store.get('41369141817351@lid').phone, '');
+  store.addIncoming('6282320753937@c.us', 'Nomor sudah terpetakan', {
+    phone: '6282320753937',
+    displayPhone: '082320753937',
+    whatsappId: '41369141817351@lid',
+    aliases: ['41369141817351@lid']
+  });
+
+  assert.equal(store.list().length, 1);
+  assert.equal(store.get('41369141817351@lid'), null);
+  assert.equal(store.get('6282320753937@c.us').messages.length, 2);
+  assert.equal(store.get('6282320753937@c.us').displayPhone, '082320753937');
+});

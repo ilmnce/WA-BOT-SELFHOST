@@ -31,6 +31,7 @@ Gunakan `npm run preview` untuk melihat dashboard dengan data contoh tanpa mengh
 - Balas manual dari panel percakapan tanpa mematikan bot global.
 - Tandai tahap prospek: baru, qualified, survei, booking, follow-up, atau selesai.
 - Proyek yang disebut prospek atau media yang dikirim akan terdeteksi otomatis.
+- ID internal WhatsApp (`@lid`) dipetakan ke nomor asli dan ditampilkan dalam format lokal `08…` jika WhatsApp menyediakan pemetaannya.
 
 ## Konfigurasi penting
 
